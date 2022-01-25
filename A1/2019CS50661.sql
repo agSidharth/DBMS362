@@ -162,20 +162,15 @@ WHERE (TEMP.raceId = races.raceId AND races.circuitId = circuits.circuitId AND T
 ORDER BY name,location,raceId;
 
 --12--
-WITH TEMP1 AS (SELECT lapTimes.raceId,MIN(milliseconds) as time
-			   FROM lapTimes
-			   GROUP BY lapTimes.raceId),
-
-TEMP2 AS (SELECT results.driverId,forename,surname,COUNT(*) as count
-		  FROM results,drivers,lapTimes,TEMP1
-		  WHERE (results.driverId = drivers.driverId AND results.raceId = lapTimes.raceId AND results.driverId = lapTimes.driverId AND
-		  		  results.fastestLap = lapTimes.lap AND TEMP1.raceId = results.raceId AND lapTimes.milliseconds = TEMP1.time)
-		  GROUP BY results.driverId,forename,surname)
+WITH TEMP1 AS (SELECT results.driverId,forename,surname,COUNT(*) as count
+		  		FROM results,drivers
+		  		WHERE (results.driverId = drivers.driverId AND results.positionOrder = 1 AND results.rank = 1)
+		  		GROUP BY results.driverId,forename,surname)
 
 SELECT * 
-FROM TEMP2
-WHERE (count = (SELECT MAX(count) FROM TEMP2))
-ORDER BY forename,surname,TEMP2.driverId;
+FROM TEMP1
+WHERE (count = (SELECT MAX(count) FROM TEMP1))
+ORDER BY forename,surname,TEMP1.driverId;
 
 
 --13--
@@ -239,7 +234,7 @@ ORDER BY name,constructorId;
 WITH TEMP AS (SELECT drivers.driverId,forename,surname,COUNT(*) as num
 			   FROM drivers,results,races,circuits
 			   WHERE (results.positionOrder = 1 AND results.driverId = drivers.driverId AND races.raceId = results.raceId
-			   		  AND races.circuitId = circuits.circuitId AND circuits.country LIKE '%USA%')
+			   		  AND races.circuitId = circuits.circuitId AND circuits.country LIKE '%USA%' AND (drivers.nationality LIKE '%American%'))
 			   GROUP BY drivers.driverId)
 
 SELECT TEMP.driverId,TEMP.forename,TEMP.surname
