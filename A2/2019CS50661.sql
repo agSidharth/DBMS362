@@ -1,22 +1,25 @@
+/*
 --Q1--
 
 WITH RECURSIVE connected2K AS(
 	SELECT source_station_name,destination_station_name,1 AS depth FROM train_info WHERE (source_station_name LIKE '%KURLA%' AND train_no = 97131)
 	UNION 
 	SELECT train_info.source_station_name,train_info.destination_station_name,connected2K.depth + 1 as depth
-	FROM train_info INNER_JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4)
+	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4)
 ) 
 SELECT distinct destination_station_name
 FROM connected2K
 ORDER BY destination_station_name;
 
+
 --Q2--
 
 WITH RECURSIVE connected2K AS(
-	SELECT source_station_name,destination_station_name,1 AS depth WHERE (source_station_name LIKE '%KURLA%' AND train_no = 97131 AND train_info.day_of_arrival = train_info.day_of_departure)
+	SELECT source_station_name,destination_station_name,1 AS depth,day_of_arrival FROM train_info WHERE (source_station_name LIKE '%KURLA%' AND train_no = 97131 AND train_info.day_of_arrival = train_info.day_of_departure)
 	UNION 
-	SELECT train_info.source_station_name,train_info.destination_station_name,connected2K.depth + 1 as depth
-	FROM train_info INNER_JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4 AND train_info.day_of_arrival = train_info.day_of_departure)
+	SELECT train_info.source_station_name,train_info.destination_station_name,connected2K.depth + 1 as depth,train_info.day_of_arrival
+	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4 AND train_info.day_of_arrival = train_info.day_of_departure
+		AND train_info.day_of_arrival = connected2K.day_of_arrival)
 ) 
 SELECT distinct destination_station_name
 FROM connected2K
@@ -28,34 +31,35 @@ WITH RECURSIVE connected2K AS(
 	SELECT source_station_name,destination_station_name,distance,day_of_arrival,1 AS depth FROM train_info WHERE (source_station_name LIKE '%DADAR%' AND train_info.day_of_arrival = train_info.day_of_departure)
 	UNION 
 	SELECT train_info.source_station_name,train_info.destination_station_name,train_info.distance + connected2K.distance,train_info.day_of_arrival,connected2K.depth + 1 as depth
-	FROM train_info INNER_JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4 AND train_info.day_of_arrival = train_info.day_of_departure)
+	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4 AND train_info.day_of_arrival = train_info.day_of_departure
+		AND train_info.day_of_arrival = connected2K.day_of_arrival)
 ) 
 SELECT destination_station_name,distance,day_of_arrival as day
 FROM connected2K
 ORDER BY destination_station_name,distance,day;
 
---Q4--
 
-/* Remember to recheck this..*/
+--Q4--
+/* ADD WEEK DAY CONDITIONS */
 
 WITH RECURSIVE connected2K AS(
-	SELECT source_station_name,destination_station_name,arrival_time,1 AS depth FROM train_info WHERE (source_station_name LIKE '%DADAR%')
+	SELECT source_station_name,destination_station_name,arrival_time,day_of_arrival,1 AS depth FROM train_info WHERE (source_station_name LIKE '%DADAR%')
 	UNION 
-	SELECT train_info.source_station_name,train_info.destination_station_name,train_info.arrival_time,connected2K.depth + 1 as depth
-	FROM train_info INNER_JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4 AND train_info.departure_time>=connected2K.arrival_time)
+	SELECT train_info.source_station_name,train_info.destination_station_name,train_info.arrival_time,train_info.day_of_arrival,connected2K.depth + 1 as depth
+	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4 
+		AND ((train_info.day_of_departure = connected2K.day_of_arrival AND connected2K.arrival_time<train_info.departure_time)))
 ) 
 SELECT distinct destination_station_name
 FROM connected2K
 ORDER BY destination_station_name;
 
-
 --Q5--
 
 WITH RECURSIVE connected2K AS(
-	SELECT source_station_name,destination_station_name,'' AS path0,1 AS depth FROM train_info WHERE (source_station_name LIKE '%CST-MUMBAI%')
+	SELECT source_station_name,destination_station_name,1 AS depth,'' AS path0 FROM train_info WHERE (source_station_name LIKE '%CST-MUMBAI%')
 	UNION 
 	SELECT connected2K.source_station_name,train_info.destination_station_name,connected2K.depth + 1 as depth, path0 || ',' || train_info.destination_station_name
-	FROM train_info INNER_JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4 AND train_info.source_station_name NOT LIKE '%VASHI%')
+	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4 AND train_info.source_station_name NOT LIKE '%VASHI%')
 ) 
 SELECT COUNT(*) as count
 FROM connected2K
@@ -63,16 +67,19 @@ WHERE (destination_station_name LIKE '%VASHI%');
 
 --Q6--
 
+/* Taking too much time */
+
 WITH RECURSIVE connected2K AS(
 	SELECT source_station_name,destination_station_name,distance,1 AS depth FROM train_info
 	UNION 
 	SELECT connected2K.source_station_name,train_info.destination_station_name,train_info.distance + connected2K.distance,connected2K.depth + 1 as depth
-	FROM train_info INNER_JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<7)
+	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<2)
 ) 
 SELECT source_station_name,destination_station_name,distance
 FROM connected2K
 WHERE (connected2K.distance = (SELECT MIN(connected2K.distance) FROM connected2K))
 ORDER BY destination_station_name,source_station_name,distance;
+
 
 --Q7--
 
@@ -80,7 +87,7 @@ WITH RECURSIVE connected2K AS(
 	SELECT source_station_name,destination_station_name,1 AS depth FROM train_info
 	UNION 
 	SELECT connected2K.source_station_name,train_info.destination_station_name,connected2K.depth + 1 as depth
-	FROM train_info INNER_JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<5)
+	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<5)
 ) 
 SELECT source_station_name,destination_station_name
 FROM connected2K
@@ -90,12 +97,11 @@ ORDER BY source_station_name,destination_station_name;
 --Q8--
 
 WITH RECURSIVE connected2K AS(
-	SELECT source_station_name,destination_station_name FROM train_info WHERE (source_station_name LIKE '%SHIVAJINAGAR%' AND train_info.day_of_arrival = train_info.day_of_departure)
+	SELECT source_station_name,destination_station_name,day_of_arrival FROM train_info WHERE (source_station_name LIKE '%SHIVAJINAGAR%' AND train_info.day_of_arrival = train_info.day_of_departure)
 	UNION 
-	SELECT train_info.source_station_name,train_info.destination_station_name
-	FROM train_info INNER_JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name 
-		AND train_info.day_of_arrival = train_info.day_of_departure  AND 
-		(NOT EXISTS (SELECT * FROM connected2K WHERE (connected2K.source_station_name = train_info.source_station_name))))
+	SELECT connected2K.source_station_name,train_info.destination_station_name,train_info.day_of_arrival
+	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name 
+		AND train_info.day_of_arrival = train_info.day_of_departure AND train_info.day_of_arrival = connected2K.day_of_arrival)
 ) 
 SELECT distinct destination_station_name
 FROM connected2K
@@ -108,7 +114,7 @@ WITH RECURSIVE connected2K AS(
 	SELECT source_station_name,destination_station_name,distance,day_of_arrival FROM train_info WHERE (source_station_name LIKE '%LONAVLA%' AND train_info.day_of_arrival = train_info.day_of_departure)
 	UNION 
 	SELECT train_info.source_station_name,train_info.destination_station_name,train_info.distance + connected2K.distance,train_info.day_of_arrival
-	FROM train_info INNER_JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name 
+	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name 
 		AND train_info.day_of_arrival = train_info.day_of_departure  AND 
 		(NOT EXISTS (SELECT * FROM connected2K WHERE (connected2K.source_station_name = train_info.source_station_name))))
 )
@@ -120,11 +126,28 @@ ORDER BY
 
 --Q10--
 
+*/
 --Q11--
 
-WITH TEMP1 AS (SELECT COUNT(DISTINCT source_station_name))
+WITH RECURSIVE connected2K AS(
+	SELECT source_station_name,destination_station_name,1 AS depth FROM train_info
+	UNION 
+	SELECT connected2K.source_station_name,train_info.destination_station_name,connected2K.depth + 1 as depth
+	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<3)
+),
+TEMP1 AS (SELECT distinct source_station_name FROM train_info UNION SELECT distinct destination_station_name FROM train_info),
+TEMP2 AS (
+SELECT connected2K.source_station_name,COUNT(distinct connected2K.destination_station_name) as count
+FROM connected2K
+GROUP BY connected2K.source_station_name
+)
 
+SELECT TEMP2.source_station_name
+FROM TEMP2
+WHERE (TEMP2.count = (SELECT COUNT(*) FROM TEMP1))
+ORDER BY source_station_name
 
+/*
 
 --Q12--
 
@@ -136,21 +159,29 @@ ORDER BY teamnames
 
 --Q13--
 
-/* Remember to recheck this..*/
-
 WITH TEMP1 AS (
-	SELECT hometeamid, SUM(homegoals)
+	SELECT hometeamid, SUM(homegoals) as goals
 	FROM games
 	GROUP BY hometeamid),
 
-TEMP2 AS (SELECT awayteamid, SUM(awaygoals)
+TEMP2 AS (SELECT awayteamid, SUM(awaygoals) as goals
 		  FROM games
 		  GROUP BY awayteamid),
 
-TEMP3 AS distinct games2.hometeamid
-FROM games as games1, games as games2,teams
+TEMP3 AS games2.hometeamid,TEMP1.goals + TEMP2.goals as goals ,games2.year
+FROM games as games1, games as games2,teams,TEMP1,TEMP2
 WHERE (teams.teamid = games1.hometeamid AND games1.awayteamid = games2.awayteamid
-		AND teams.name LIKE '%Arsenal%')
+		AND teams.name LIKE '%Arsenal%' AND TEMP1.hometeamid = games2.hometeamid
+		AND TEMP2.awayteamid = games2.hometeamid),
+
+TEMP4 AS TEMP3.hometeamid,goals,year
+FROM TEMP3
+WHERE (TEMP3.goals = (SELECT MAX(goals) FROM TEMP3))
+
+SELECT teams.name as teamnames,goals,year
+FROM TEMP4,teams
+WHERE (teams.teamid = TEMP4.hometeamid AND TEMP4.year = (SELECT MIN(year) FROM TEMP4))
+ORDER BY teamnames,goals,year
 
 
 --Q14--
@@ -178,3 +209,4 @@ ORDER BY goals,teams2.name
 
 --Q22--
 
+*/
