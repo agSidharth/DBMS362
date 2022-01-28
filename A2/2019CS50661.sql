@@ -38,7 +38,6 @@ SELECT destination_station_name,distance,day_of_arrival as day
 FROM connected2K
 ORDER BY destination_station_name,distance,day;
 
-*/
 --Q4--
 /* ADD WEEK DAY CONDITIONS */
 
@@ -59,7 +58,6 @@ SELECT distinct destination_station_name
 FROM connected2K
 ORDER BY destination_station_name;
 
-/*
 --Q5--
 
 WITH RECURSIVE connected2K AS(
@@ -133,6 +131,8 @@ ORDER BY
 
 --Q10--
 
+
+*/
 --Q11--
 
 WITH RECURSIVE connected2K AS(
@@ -141,7 +141,7 @@ WITH RECURSIVE connected2K AS(
 	SELECT connected2K.source_station_name,train_info.destination_station_name,connected2K.depth + 1 as depth
 	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<3)
 ),
-TEMP1 AS (SELECT distinct source_station_name FROM train_info UNION SELECT distinct destination_station_name FROM train_info),
+TEMP1 AS (SELECT COUNT(distinct destination_station_name) as count FROM train_info),
 TEMP2 AS (
 SELECT connected2K.source_station_name,COUNT(distinct connected2K.destination_station_name) as count
 FROM connected2K
@@ -149,11 +149,11 @@ GROUP BY connected2K.source_station_name
 )
 
 SELECT TEMP2.source_station_name
-FROM TEMP2
-WHERE (TEMP2.count = (SELECT COUNT(*) FROM TEMP1))
+FROM TEMP2,TEMP1
+WHERE (TEMP2.count = TEMP1.count)
 ORDER BY source_station_name
 
-
+/*
 --Q12--
 
 SELECT distinct teams2.name as teamnames
