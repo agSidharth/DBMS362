@@ -38,7 +38,7 @@ SELECT destination_station_name,distance,day_of_arrival as day
 FROM connected2K
 ORDER BY destination_station_name,distance,day;
 
-
+*/
 --Q4--
 /* ADD WEEK DAY CONDITIONS */
 
@@ -47,12 +47,19 @@ WITH RECURSIVE connected2K AS(
 	UNION 
 	SELECT train_info.source_station_name,train_info.destination_station_name,train_info.arrival_time,train_info.day_of_arrival,connected2K.depth + 1 as depth
 	FROM train_info INNER JOIN connected2K on (train_info.source_station_name = connected2K.destination_station_name AND connected2K.depth + 1<4 
-		AND ((train_info.day_of_departure = connected2K.day_of_arrival AND connected2K.arrival_time<train_info.departure_time)))
+		AND ((train_info.day_of_departure = connected2K.day_of_arrival AND connected2K.arrival_time<train_info.departure_time) 
+			OR (connected2K.day_of_arrival LIKE '%Monday%')
+			OR (connected2K.day_of_arrival LIKE '%Tuesday%' AND train_info.day_of_departure NOT LIKE '%Monday%')
+			OR (connected2K.day_of_arrival LIKE '%Wednesday%' AND train_info.day_of_departure NOT LIKE '%Monday|Tuesday%')
+			OR (connected2K.day_of_arrival LIKE '%Thursday%' AND train_info.day_of_departure NOT LIKE '%Monday|Tuesday|Wednesday%')
+			OR (connected2K.day_of_arrival LIKE '%Friday%' AND train_info.day_of_departure LIKE '%Saturday|Sunday%')
+			OR (connected2K.day_of_arrival LIKE '%Saturday%' AND train_info.day_of_departure LIKE '%Sunday%')))
 ) 
 SELECT distinct destination_station_name
 FROM connected2K
 ORDER BY destination_station_name;
 
+/*
 --Q5--
 
 WITH RECURSIVE connected2K AS(
@@ -126,7 +133,6 @@ ORDER BY
 
 --Q10--
 
-*/
 --Q11--
 
 WITH RECURSIVE connected2K AS(
@@ -147,7 +153,6 @@ FROM TEMP2
 WHERE (TEMP2.count = (SELECT COUNT(*) FROM TEMP1))
 ORDER BY source_station_name
 
-/*
 
 --Q12--
 
