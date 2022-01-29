@@ -11,7 +11,6 @@ SELECT distinct destination_station_name
 FROM connected2K
 ORDER BY destination_station_name;
 
-
 --Q2--
 
 WITH RECURSIVE connected2K AS(
@@ -24,6 +23,7 @@ WITH RECURSIVE connected2K AS(
 SELECT distinct destination_station_name
 FROM connected2K
 ORDER BY destination_station_name;
+
 
 --Q3--
 
@@ -126,13 +126,12 @@ WITH RECURSIVE connected2K AS(
 SELECT MIN(distance),destination_station_name,day_of_arrival
 FROM connected2K
 GROUP BY destination_station_name,day_of_arrival
-ORDER BY
+ORDER BY;
 
 
 --Q10--
 
 
-*/
 --Q11--
 
 WITH RECURSIVE connected2K AS(
@@ -151,16 +150,15 @@ GROUP BY connected2K.source_station_name
 SELECT TEMP2.source_station_name
 FROM TEMP2,TEMP1
 WHERE (TEMP2.count = TEMP1.count)
-ORDER BY source_station_name
+ORDER BY source_station_name;
 
-/*
 --Q12--
 
 SELECT distinct teams2.name as teamnames
 FROM games as games1,games as games2,teams as teams1, teams as teams2
 WHERE (teams1.teamid = games1.hometeamid AND teams2.teamid = games2.hometeamid
 		AND games1.awayteamid = games2.awayteamid AND teams1.name LIKE '%Arsenal%')
-ORDER BY teamnames
+ORDER BY teamnames;
 
 --Q13--
 
@@ -186,7 +184,7 @@ WHERE (TEMP3.goals = (SELECT MAX(goals) FROM TEMP3))
 SELECT teams.name as teamnames,goals,year
 FROM TEMP4,teams
 WHERE (teams.teamid = TEMP4.hometeamid AND TEMP4.year = (SELECT MIN(year) FROM TEMP4))
-ORDER BY teamnames,goals,year
+ORDER BY teamnames,goals,year;
 
 
 --Q14--
@@ -196,15 +194,82 @@ FROM games as games1,games as games2,teams as teams1,teams as teams2
 WHERE(teams1.teamid = games1.hometeamid AND teams2.teamid = games2.hometeamid
 	  AND games1.awayteamid = games2.awayteamid AND teams1.name LIKE '%Leicester%'
 	  games2.year = 2015 AND (games2.homegoals - games2.awaygoals > 3))
-ORDER BY goals,teams2.name
+ORDER BY goals,teams2.name;
 
 --Q15--
 
+WITH TEMP1 AS(
+	SELECT distinct games2.gameid,games2.leagueid
+	FROM games as games1,games as games2,teams
+	WHERE (teams.teamid = games1.hometeamid AND games1.awayteamid = games2.awayteamid 
+		AND teams1.name LIKE '%Valencia%')
+),
+
+TEMP2 AS(
+	SELECT appearances.playerid,SUM(appearances.goals)
+	FROM TEMP1,appearances
+	WHERE (appearances.gameid = TEMP1.gameid AND appearances.leagueid = TEMP1.leagueid)
+	GROUP BY appearances.playerid
+)
+
+SELECT players.name as playernames,TEMP2.goals as scores
+FROM TEMP2,players
+WHERE (players.playerid = TEMP2.playerid AND TEMP2.goals = (SELECT MAX(goals) FROM TEMP2))
+ORDER BY playernames,scores;
+
+
 --Q16--
+
+WITH TEMP1 AS(
+	SELECT distinct games2.gameid,games2.leagueid
+	FROM games as games1,games as games2,teams
+	WHERE ((teams.teamid = games1.hometeamid AND games1.awayteamid = games2.awayteamid AND teams1.name LIKE '%Everton%') OR 
+		   (teams.teamid = games1.awayteamid AND games1.hometeamid = games2.hometeamid AND teams1.name LIKE '%Everton%'))
+),
+
+TEMP2 AS(
+	SELECT appearances.playerid,SUM(appearances.assists)
+	FROM TEMP1,appearances
+	WHERE (appearances.gameid = TEMP1.gameid AND appearances.leagueid = TEMP1.leagueid)
+	GROUP BY appearances.playerid
+)
+
+SELECT players.name as playernames,TEMP2.assists as assists
+FROM TEMP2,players
+WHERE (players.playerid = TEMP2.playerid AND TEMP2.assists = (SELECT MAX(assists) FROM TEMP2))
+ORDER BY playernames,assists;
 
 --Q17--
 
+WITH TEMP1 AS(
+	SELECT distinct games2.gameid,games2.leagueid
+	FROM games as games1,games as games2,teams
+	WHERE (((teams.teamid = games1.hometeamid AND games1.awayteamid = games2.awayteamid AND teams1.name LIKE '%AC Milan%') OR 
+		   (teams.teamid = games1.awayteamid AND games1.hometeamid = games2.hometeamid AND teams1.name LIKE '%AC Milan%')) AND
+			games2.year LIKE '%2016%')
+),
+
+TEMP2 AS(
+	SELECT appearances.playerid,SUM(appearances.shots)
+	FROM TEMP1,appearances
+	WHERE (appearances.gameid = TEMP1.gameid AND appearances.leagueid = TEMP1.leagueid)
+	GROUP BY appearances.playerid
+)
+
+SELECT players.name as playernames,TEMP2.shots as shotscount
+FROM TEMP2,players
+WHERE (players.playerid = TEMP2.playerid AND TEMP2.shots = (SELECT MAX(shots) FROM TEMP2))
+ORDER BY playernames,shotscount;
+
+
 --Q18--
+
+SELECT teams2.name as teamname, games2.year
+FROM games as games1,games as games2,teams as teams1,teams as teams2
+WHERE (teams1.teamid = games1.awayteamid AND games1.hometeamid = games2.hometeamid AND teams1.name LIKE '%AC Milan%'
+		AND teams2.teamid = games2.awayteamid AND games2.year LIKE '%2020%' AND games2.awaygoals = 0)
+ORDER BY teamname,year
+LIMIT 5;
 
 --Q19--
 
