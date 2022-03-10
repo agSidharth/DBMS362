@@ -6,7 +6,9 @@ using namespace std;
 int regionMaxNodes;
 int pointMaxNodes;
 int rootid;
+int newnodeid;
 map<int,int> nodeType;      // 2 for point nodes and 1 for region nodes...
+map<int,int> parentMap;
 
 void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
 {
@@ -35,7 +37,10 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
         fh.MarkDirty(0);
         fh.FlushPages();
 
-        rootid = 0;
+        rootid = newnodeid;
+        newnodeid++;
+
+        parentMap[rootid] = -1;
         nodeType[0] = 2;
         return;
     }
@@ -51,7 +56,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     while(idx<pointMaxNodes-1)
     {
         memcpy(&num,&data[offset+qpoint.size()*4],4);
-        if(num<-1) break;
+        if(num<=-1) break;
         offset += (qpoint.size() + 1)*4;
         idx++;
     }
@@ -79,6 +84,104 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
 
     vector<int> tempVec;
     Reorganization(fh,fm,qpoint,pointNode,true,tempVec);
+}
+
+void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int pointNode,bool isPoint,int split_element,vector<int>& qpoint)
+{
+    PageHandler ph = fh.PageAt(pointNode);
+    char *data = ph.GetData();
+    char *Ldata = left.GetData();
+    char *Rdata = right.GetData();
+
+    int offset,num,split_dim,Loffset,Roffset;
+    memcpy(&split_dim,&data[4],4);
+
+    memcpy(&Ldata[0],&newnodeid,4);
+    memcpy(&Ldata[4],&split_dim,4);
+
+    newnodeid++;
+    memcpy(&Rdata[0],&newnodeid,4);
+    memcpy(&Rdata[4],&split_dim,4);
+    
+    offset = 8;
+    Loffset = 8;
+    Roffset = 8;
+
+    if(isPoint)
+    {
+        for(int idx=0;idx<pointMaxNodes;idx++)
+        {
+            memcpy(&num,&data[offset+4*split_dim],4);
+            if(num<split_element)
+            {
+                memcpy(&Ldata[Loffset],&data[offset],4*(qpoint.size()+1));
+                Loffset += 4*(qpoint.size()+1);
+            }
+            else
+            {
+                memcpy(&Rdata[Roffset],&data[offset],4*(qpoint.size()+1));
+                Roffset += 4*(qpoint.size()+1);
+            }
+            offset += 4*(qpoint.size()+1);
+        }
+
+        num = -1;
+        if(qpoint[split_dim]<split_element)
+        {
+            memcpy(&Ldata[Loffset],&qpoint[0],4*(qpoint.size()));
+            Loffset += 4*(qpoint.size());
+            memcpy(&Ldata[Loffset],&num,4);
+            Loffset += 4;
+        }
+        else
+        {
+            memcpy(&Rdata[Roffset],&qpoint[0],4*(qpoint.size()));
+            Roffset += 4*(qpoint.size());
+            memcpy(&Rdata[Roffset],&num,4);
+            Roffset += 4;    
+        }
+       
+        memcpy(&Ldata[Loffset-4],&num,4);       // to ensure last one is -1..
+        memcpy(&Rdata[Roffset-4],&num,4);
+
+        return;                                 // since everything has been completed..
+    }
+
+    //if this is region node.
+    // here qpoint will be the region node...region node will be of size 2*dim + 1
+    // currently wrong..
+    /*
+    for(int idx=0;idx<regionMaxNodes;idx++)
+    {
+        memcpy(&num,&data[offset+4*(1+split_dim)],4);
+        if(num<split_element)
+        {
+            memcpy(&Ldata[Loffset],&data[offset],4*(qpoint.size()));
+            Loffset += 4*(qpoint.size());
+        }
+        else
+        {
+            memcpy(&Rdata[Roffset],&data[offset],4*(qpoint.size()));
+            Roffset += 4*(qpoint.size());
+        }
+        offset += 4*(qpoint.size());
+    }
+    num = -1;
+
+    if(qpoint[(1+split_dim)]<split_element)
+    {
+        memcpy(&Ldata[Loffset],&qpoint[0],4*(qpoint.size()));
+        Loffset += 4*(qpoint.size());
+    }
+    else
+    {
+        memcpy(&Rdata[Roffset],&qpoint[0],4*(qpoint.size()));
+        Roffset += 4*(qpoint.size());
+    }
+       
+    if(Loffset<PAGE_CONTENT_SIZE)memcpy(&Ldata[Loffset],&num,4);       // to ensure first child after that one is -1..
+    if(Roffset<PAGE_CONTENT_SIZE)memcpy(&Rdata[Roffset],&num,4);
+    */
 }
 
 void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int pointNode,bool isPoint,vector<int>& region)
@@ -110,11 +213,20 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int poin
             offset += 4*(2*qpoint.size()+1);
             vecMedian.push_back(num);
         }
-        vecMedian.push_back(region[4*(1+split_dim)]);
+        vecMedian.push_back(region[(1+split_dim)]);
     }
 
     nth_element(vecMedian.begin(),vecMedian.begin()+vecMedian.size()/2,vecMedian.end());
     int split_element = vecMedian[vecMedian.size()/2];
+
+    PageHandler left;
+    PageHandler right;
+
+    if(isPoint) NodeSplit(left,right,fh,pointNode,isPoint,split_element,qpoint);
+    else NodeSplit(left,right,fh,pointNode,isPoint,split_element,region);
+
+    // now need to integrate left,right and delete pointNode..
+
 }
 
 int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,bool actualP)
