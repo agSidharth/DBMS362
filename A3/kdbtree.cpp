@@ -8,6 +8,22 @@ int pointMaxNodes;
 int rootid;
 int newnodeid;
 vector<int> parentVec;
+vector<int> splitVec;
+
+int returnMedian(vector<int>& a)
+{
+    int n = a.size();
+    if(n%2==0)
+    {
+        nth_element(a.begin(),a.begin()+n/2,a.end());
+        nth_element(a.begin(),a.begin()+(n-1)/2,a.end());
+
+        if((a[(n-1)/2]+a[n/2])%2==0) return (a[(n-1)/2]+a[n/2])/2;
+        return int((a[(n-1)/2]+a[n/2])/2) + 1;    
+    }
+    nth_element(a.begin(),a.begin()+n/2,a.end());
+    return a[n/2];
+}
 
 void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
 {
@@ -86,15 +102,30 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     Reorganization(fh,fm,qpoint,pointNode,true,tempVec);
 
     parentVec.resize(0);
+    splitVec.resize(0);
 }
 
 void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int thisNode,bool isPoint,vector<int>& region)
 {
     PageHandler ph = fh.PageAt(thisNode);
     char *data = ph.GetData ();
+    bool createRoot = false;
 
-    int split_dim,offset,num;
-    memcpy(&split_dim,&data[4],4);                  // Here confirm about the split_dim...
+    int split_dim,offset,num,parentNode;
+
+    if(parentVec.size()>0)
+    {
+        split_dim = splitVec[splitVec.size()-1];
+        parentNode = parentVec[parentVec.size()-1];
+        splitVec.pop_back();
+        parentVec.pop_back();
+    }
+    else
+    {
+        memcpy(&split_dim,&data[4],4);
+        split_dim = (split_dim+1)%(qpoint.size());
+        createRoot = true;
+    }
 
     //Choose split element..
     vector<int> vecMedian;
@@ -120,8 +151,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
         vecMedian.push_back(region[(1+split_dim)]);
     }
 
-    nth_element(vecMedian.begin(),vecMedian.begin()+vecMedian.size()/2,vecMedian.end());
-    int split_element = vecMedian[vecMedian.size()/2];
+    int split_element = returnMedian(vecMedian);
 
     PageHandler left;
     int leftId = newnodeid;
@@ -130,18 +160,35 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     int rightId = newnodeid + 1;
     newnodeid += 2;
 
-    if(isPoint) NodeSplit(left,right,fh,thisNode,isPoint,split_element,qpoint,leftId,rightId);
-    else NodeSplit(left,right,fh,thisNode,isPoint,split_element,region,leftId,rightId);
-
-    // ALERT also deal when parentVec is empty..
-    int parentNode = parentVec[parentVec.size()-1];
-    parentVec.pop_back();
+    if(isPoint) NodeSplit(left,right,fh,thisNode,isPoint,split_element,qpoint,leftId,rightId,true,split_dim);
+    else NodeSplit(left,right,fh,thisNode,isPoint,split_element,region,leftId,rightId,true,split_dim);
 
     vector<int> parentMin(qpoint.size());
     vector<int> parentMax(qpoint.size());
 
-    PageHandler pph = fh.PageAt(parentNode);
-    char *pdata = pph.GetData ();
+    char* pdata;
+    PageHandler pph;
+    if(createRoot)
+    {
+        rootid = newnodeid;
+        newnodeid++;
+        parentNode = rootid;
+        pph = fh.NewPage();
+        pdata = pph.GetData ();
+
+        int temp2 = rootid;
+        memcpy(&pdata[0],&temp2,4);
+        temp2 = split_dim;
+        memcpy(&pdata[4],&temp2,4);
+        temp2 = 1;
+        memcpy(&pdata[8],&temp2,4);
+    }
+    else
+    {
+        pph = fh.PageAt(parentNode);
+        pdata = pph.GetData ();
+    }
+    
     bool poverflow = true;
     offset = 12;
 
@@ -184,21 +231,21 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
 
 }
 
-void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int pointNode,bool isPoint,int split_element,vector<int>& qpoint,int leftId,int rightId)
+void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int pointNode,bool isPoint,int split_element,vector<int>& qpoint,int leftId,int rightId,bool addlast,int split_dim)
 {
     PageHandler ph = fh.PageAt(pointNode);
     char *data = ph.GetData();
     char *Ldata = left.GetData();
     char *Rdata = right.GetData();
 
-    int offset,num,split_dim,Loffset,Roffset;
-    memcpy(&split_dim,&data[4],4);
+    int offset,num,this_split_dim,Loffset,Roffset;
+    memcpy(&this_split_dim,&data[4],4);
 
     memcpy(&Ldata[0],&leftId,4);
-    memcpy(&Ldata[4],&split_dim,4);
+    memcpy(&Ldata[4],&this_split_dim,4);
 
     memcpy(&Rdata[0],&rightId,4);
-    memcpy(&Rdata[4],&split_dim,4);
+    memcpy(&Rdata[4],&this_split_dim,4);
     
     offset = 12;
     Loffset = 12;
@@ -253,19 +300,97 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int pointNod
     num = 1;
     memcpy(&Ldata[Loffset-4],&num,4);
     memcpy(&Rdata[Roffset-4],&num,4);
-    int leftnum,rightnum;
-    int dim = qpoint.size()/2;
+    vector<int> region = qpoint;                // to avoid confusion...
+
+    int leftnum,rightnum,temp;
+    int dim = region.size()/2;
 
     for(int idx=0;idx<regionMaxNodes;idx++)
     {
         memcpy(&leftnum,&data[offset+4+4*split_dim],4);
         memcpy(&rightnum,&data[offset+4+4*dim+4*split_dim],4);
-        // Continue..
+
+        if(split_element>=rightnum)
+        {
+            memcpy(&Ldata[Loffset],&data[offset],4*(region.size()));
+            Loffset += 4*(region.size());
+        }
+        else if(split_element<leftnum)
+        {
+            memcpy(&Rdata[Roffset],&data[offset],4*(region.size()));
+            Roffset += 4*(region.size());    
+        }
+        else
+        {
+            int nextToSplit;
+            int leftChildId = newnodeid;
+            int rightChildId = newnodeid + 1;
+            newnodeid += 2;
+
+            memcpy(&nextToSplit,&data[offset],4);       
+
+            PageHandler leftChild,rightChild;
+            NodeSplit(leftChild,rightChild,fh,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
+
+            memcpy(&Ldata[Loffset],&data[offset],4*(region.size()));
+            memcpy(&Ldata[Loffset],&leftChildId,4);
+            //memcpy(&Ldata[Loffset + 4*(1+split_dim)],&split_element,4);
+            memcpy(&Ldata[Loffset + 4*(1+dim+split_dim)],&split_element,4);
+
+
+            memcpy(&Rdata[Loffset],&data[offset],4*(region.size()));
+            memcpy(&Rdata[Loffset],&leftChildId,4);
+            memcpy(&Rdata[Loffset + 4*(1+split_dim)],&split_element,4);
+            //memcpy(&Rdata[Loffset + 4*(1+dim+split_dim)],&split_element,4); 
+        }
+        offset += 4*(region.size());
     }
+    if(addlast)
+    {
+        memcpy(&leftnum,&region[1+split_dim],4);
+        memcpy(&rightnum,&region[1+dim+split_dim],4);
+
+        if(split_element>=rightnum)
+        {
+            memcpy(&Ldata[Loffset],&region[0],4*(region.size()));
+            Loffset += 4*(region.size());
+        }
+        else if(split_element<leftnum)
+        {
+            memcpy(&Rdata[Roffset],&region[0],4*(region.size()));
+            Roffset += 4*(region.size());    
+        }
+        else
+        {
+            int nextToSplit;
+            int leftChildId = newnodeid;
+            int rightChildId = newnodeid + 1;
+            newnodeid += 2;
+
+            memcpy(&nextToSplit,&region[0],4);       
+
+            PageHandler leftChild,rightChild;
+            NodeSplit(leftChild,rightChild,fh,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
+
+            memcpy(&Ldata[Loffset],&region[0],4*(region.size()));
+            memcpy(&Ldata[Loffset],&leftChildId,4);
+            //memcpy(&Ldata[Loffset + 4*(1+split_dim)],&split_element,4);
+            memcpy(&Ldata[Loffset + 4*(1+dim+split_dim)],&split_element,4);
+
+
+            memcpy(&Rdata[Loffset],&region[0],4*(region.size()));
+            memcpy(&Rdata[Loffset],&leftChildId,4);
+            memcpy(&Rdata[Loffset + 4*(1+split_dim)],&split_element,4);
+            //memcpy(&Rdata[Loffset + 4*(1+dim+split_dim)],&split_element,4); 
+        }    
+    }
+    
+    temp = -1;
+    if(Loffset<PAGE_SIZE) memcpy(&Ldata[Loffset],&temp,4);
+    if(Roffset<PAGE_SIZE) memcpy(&Rdata[Roffset],&temp,4);
     
 }
 
-//ALERT write a sorting function for region node...
 int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,bool actualP)
 {
     int curr_node = rootid;
@@ -286,6 +411,8 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         if(Ntype==2) break;                             //Ntype=1 for region and 2 for point node.
 
         memcpy(&split_dim, &data[4], 4);
+        splitVec.push_back(split_dim);
+
         node_num = 0;
         offset = 12;
 
@@ -312,6 +439,8 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
     if(!actualP) return curr_node;              // Is it real pQuery... if not return..
 
     parentVec.resize(0);
+    splitVec.resize(0);
+
     PageHandler ph = fh.PageAt(curr_node);
     char *data = ph.GetData ();
     bool test = false;
