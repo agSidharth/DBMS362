@@ -7,6 +7,7 @@ int regionMaxNodes;
 int pointMaxNodes;
 int rootid;
 int newnodeid;
+
 vector<int> parentVec;
 vector<int> splitVec;
 
@@ -30,7 +31,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     //first check if root points to null..
     if(rootid==-1)
     {
-        PageHandler ph = fh.NewPage ();
+        PageHandler ph = fh.NewPage();
 	    char *data = ph.GetData ();
 
         int num = 0;                //root identifier
@@ -43,17 +44,13 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
         memcpy(&data[8],&num,4);
 
         int offset = 12;
-        for(int idx=0;idx<qpoint.size();idx++)
-        {
-            memcpy(&data[offset],&qpoint[idx],sizeof(int));
-            offset += 4;
-        }
+        memcpy(&data[offset],&qpoint[0],4*(qpoint.size()));
 
         num = -1;                   //location currently stores if the next element is present or not..
         memcpy(&data[offset],&num,sizeof(int));
 
-        fh.MarkDirty(0);            // Confirm later..
-        fh.FlushPages();
+        fh.DisposePage(0);
+        fh.FlushPage(0);
 
         rootid = newnodeid;
         newnodeid++;
@@ -82,27 +79,26 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     {
         offset += (qpoint.size() + 1)*4;
         num = pointNode;                        // what is stored in location by default..
-        memcpy(&data[offset-4],&num,4);
+        memcpy(&data[offset-4],&num,4);         // store pointer to next node..
         
-        for(idx=0;idx<qpoint.size();idx++)
-        {
-            num = qpoint[idx];
-            memcpy(&data[offset],&num,4);
-            offset += 4;
-        }
-
+        memcpy(&data[offset],&qpoint[0],4*(qpoint.size()));
         num = -1;
         memcpy(&data[offset],&num,4);          // again -1 inserted in the end.
 
+        fh.DisposePage(pointNode);
+        fh.FlushPage(pointNode);
         return ;
     }
-    fh.FlushPages();                            // need to confirm this..
 
     vector<int> tempVec;                        // just to maintain same arguments..
     Reorganization(fh,fm,qpoint,pointNode,true,tempVec);
+    fh.UnpinPage(pointNode);
 
     parentVec.resize(0);
     splitVec.resize(0);
+
+    string sprint = "INSERTION DONE ";
+    outfile.write(sprint.data(),sprint.size());
 }
 
 void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int thisNode,bool isPoint,vector<int>& region)
@@ -123,7 +119,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     else
     {
         memcpy(&split_dim,&data[4],4);
-        split_dim = (split_dim+1)%(qpoint.size());
+        split_dim = (split_dim+1)%(qpoint.size()); // as we go up we increase split_dim..
         createRoot = true;
     }
 
@@ -153,10 +149,10 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
 
     int split_element = returnMedian(vecMedian);
 
-    PageHandler left;
+    PageHandler left = fh.NewPage();
     int leftId = newnodeid;
 
-    PageHandler right;
+    PageHandler right = fh.NewPage();
     int rightId = newnodeid + 1;
     newnodeid += 2;
 
@@ -182,6 +178,16 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
         memcpy(&pdata[4],&temp2,4);
         temp2 = 1;
         memcpy(&pdata[8],&temp2,4);
+
+        memcpy(&pdata[12],&thisNode,4);
+
+        temp2 = INT_MIN;
+        for(int i=0;i<qpoint.size()*2;i++)
+        {
+            if(i>=qpoint.size()) temp2 = INT_MAX;
+            memcpy(&pdata[16+i*4],&temp2,4);
+        }
+        fh.MarkDirty(rootid);
     }
     else
     {
@@ -198,7 +204,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
         if(num==thisNode)
         {
             memcpy(&parentMin[0],&pdata[offset+4],4*(qpoint.size()));
-            memcpy(&parentMax[0],&pdata[4+4*(qpoint.size())],4*qpoint.size());
+            memcpy(&parentMax[0],&pdata[offset+4+4*(qpoint.size())],4*qpoint.size());
             memcpy(&pdata[offset],&leftId,4);
             memcpy(&pdata[offset+4*(1+qpoint.size()+split_dim)],&split_element,4);
             // ALERT : Here remember to delete thisNode id from file memory..
@@ -217,6 +223,9 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
         memcpy(&pdata[offset],&rightId,4);
         memcpy(&pdata[offset+4],&parentMin[0],4*(qpoint.size()));
         memcpy(&pdata[offset+4*(1+qpoint.size())],&parentMax[0],4*(qpoint.size()));
+
+        fh.DisposePage(parentNode);
+        fh.FlushPage(parentNode);
         return ;
     }
 
@@ -226,14 +235,17 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     for(int idx=0;idx<qpoint.size();idx++) newRegion.push_back(parentMax[idx]);
 
     Reorganization(fh,fm,qpoint,parentNode,false,newRegion);
+
+    fh.DisposePage(parentNode);
+    fh.FlushPage(parentNode);
     
     // now need to integrate left,right and delete pointNode..
 
 }
 
-void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int pointNode,bool isPoint,int split_element,vector<int>& qpoint,int leftId,int rightId,bool addlast,int split_dim)
+void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode,bool isPoint,int split_element,vector<int>& qpoint,int leftId,int rightId,bool addlast,int split_dim)
 {
-    PageHandler ph = fh.PageAt(pointNode);
+    PageHandler ph = fh.PageAt(thisNode);
     char *data = ph.GetData();
     char *Ldata = left.GetData();
     char *Rdata = right.GetData();
@@ -292,6 +304,12 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int pointNod
         memcpy(&Ldata[Loffset-4],&num,4);       // to ensure last one is -1..
         memcpy(&Rdata[Roffset-4],&num,4);
 
+        fh.DisposePage(leftId);
+        fh.DisposePage(rightId);
+        fh.FlushPage(leftId);
+        fh.FlushPage(rightId);
+
+        fh.UnpinPage(thisNode);
         return;                                 // since everything has been completed..
     }
 
@@ -329,7 +347,8 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int pointNod
 
             memcpy(&nextToSplit,&data[offset],4);       
 
-            PageHandler leftChild,rightChild;
+            PageHandler leftChild = fh.NewPage();
+            PageHandler rightChild = fh.NewPage();
             NodeSplit(leftChild,rightChild,fh,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
 
             memcpy(&Ldata[Loffset],&data[offset],4*(region.size()));
@@ -369,7 +388,8 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int pointNod
 
             memcpy(&nextToSplit,&region[0],4);       
 
-            PageHandler leftChild,rightChild;
+            PageHandler leftChild = fh.NewPage();
+            PageHandler rightChild = fh.NewPage();
             NodeSplit(leftChild,rightChild,fh,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
 
             memcpy(&Ldata[Loffset],&region[0],4*(region.size()));
@@ -389,6 +409,10 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int pointNod
     if(Loffset<PAGE_SIZE) memcpy(&Ldata[Loffset],&temp,4);
     if(Roffset<PAGE_SIZE) memcpy(&Rdata[Roffset],&temp,4);
     
+    fh.DisposePage(leftId);
+    fh.DisposePage(rightId);
+    fh.FlushPage(leftId);
+    fh.FlushPage(rightId);
 }
 
 int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,bool actualP)
@@ -431,8 +455,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
             offset += 4*(1+2*qpoint.size());
             node_num++;
         }
-        // ALERT handle the case when app.. range is not found..
-        fh.UnpinPage(parent_node);              // ALERT confirm this..
+        fh.UnpinPage(parent_node);              
         regionsTouched++;
     }
 
@@ -441,6 +464,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
     parentVec.resize(0);
     splitVec.resize(0);
 
+    fh.UnpinPage(curr_node);
     PageHandler ph = fh.PageAt(curr_node);
     char *data = ph.GetData ();
     bool test = false;
@@ -461,8 +485,13 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         num_nodes++;
     }
 
-    // now  based on test act accordingly..
-    //correct this.. later..
+    fh.UnpinPage(curr_node);
+
+    string sprint;
+    if(test) sprint = "TRUE "+to_string(regionsTouched) +"\n";
+    else sprint = "FALSE\n";
+    outfile.write(sprint.data(),sprint.size());
+    
     return test;
 }
 
