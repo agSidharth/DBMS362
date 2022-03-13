@@ -9,7 +9,7 @@ const int BUFFER_SIZE=40;
 // constants relation to page
 
 // page content size 
-const int PAGE_SIZE=4096;
+const int PAGE_SIZE=128;
 // Page content size
 const int PAGE_CONTENT_SIZE = PAGE_SIZE - sizeof(int); // integer excluded since that is part of page header
 
