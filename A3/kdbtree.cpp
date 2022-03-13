@@ -170,18 +170,16 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
         memcpy(&Rdata[Roffset-4],&num,4);
 
         cerr<<"break8:\n";
-        
-        fh.MarkDirty(leftId);
-        fh.UnpinPage(leftId);
+        //fh.MarkDirty(leftId);                 //ALERT Dont know why comment should be here..
+        //fh.UnpinPage(leftId);
 
-        fh.MarkDirty(rightId);
-        fh.UnpinPage(rightId);
+        //fh.MarkDirty(rightId);
+        //fh.UnpinPage(rightId);
 
         //fh.FlushPage(leftId);
         //fh.FlushPage(rightId);
         
-        fh.UnpinPage(thisNode);
-        cerr<<"break8:\n";
+        //fh.UnpinPage(thisNode);
         return;                                 // since everything has been completed..
     }
 
@@ -220,8 +218,12 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
 
             memcpy(&nextToSplit,&data[offset],4);       
 
-            PageHandler leftChild = fh.NewPage();
+            cout<<"break9.1:\n";
+            fh.FlushPages();
+            PageHandler leftChild = fh.NewPage();    //ALERT: seg fault here..
             PageHandler rightChild = fh.NewPage();
+            cout<<"break9.2:\n";
+
             NodeSplit(leftChild,rightChild,fh,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
 
             memcpy(&Ldata[Loffset],&data[offset],4*(region.size()));
@@ -523,7 +525,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
         num = -1;
         memcpy(&data[offset+4*(qpoint.size())],&num,4);          // again -1 inserted in the end.
 
-        fh.MarkDirty(pointNode);              // ALERT: something wrong with this dirty..
+        fh.MarkDirty(pointNode);              // ALERT: something wrong with this dirty..in bigger test case
         fh.UnpinPage(pointNode);
         //fh.FlushPage(pointNode);
 
