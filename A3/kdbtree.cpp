@@ -219,7 +219,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
             memcpy(&nextToSplit,&data[offset],4);       
 
             cout<<"break9.1:\n";
-            fh.FlushPages();
+            //fh.FlushPages();
             PageHandler leftChild = fh.NewPage();    //ALERT: seg fault here..
             PageHandler rightChild = fh.NewPage();
             cout<<"break9.2:\n";
@@ -554,6 +554,7 @@ vector<vector<int>> rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,f
     int regTouched = 0;
     //for pointTouched use the size of pointsList..
 
+    int dim = qpoint.size()/2;
     queue<int> toExplore;
     toExplore.push(rootid);
 
@@ -580,7 +581,7 @@ vector<vector<int>> rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,f
                 thisPoint.push_back(num);
                 idx++;
 
-                if(idx==qpoint.size()/2)            //qpoint.size() =  2*dim
+                if(idx==dim)            
                 {
                     pointsList.push_back(thisPoint);
                     thisPoint.resize(0);
@@ -597,13 +598,28 @@ vector<vector<int>> rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,f
 
         while(idx<regionMaxNodes)
         {
-            memcpy(&num,&data[offset],4);
+            regTouched++;
+            memcpy(&num,&data[offset],4);        //num has child id..
             if(num==-1) break;
-            //check if range overlaps.. then insert in the queue..
-            //ask how to check what it means to overlap..
+            
+            int rmin,rmax;
+            bool test = true;
+
+            for(int jdx=0;jdx<dim;jdx++)
+            {
+                memcpy(&rmin,&data[offset+4*(1+jdx)],4);
+                memcpy(&rmax,&data[offset+4*(1+dim+jdx)],4);
+
+                if(!(rmin<=qpoint[2*jdx] && rmax>qpoint[2*jdx+1])) {test = false;break;}
+            }
+            if(test) toExplore.push(num);
+
+            offset += 4*(2*dim+1);        
             idx++;
         }        
     }
+    //print regTouched..
+    //print points list..
     return pointsList;
 }
 
