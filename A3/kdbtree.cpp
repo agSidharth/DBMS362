@@ -106,7 +106,7 @@ int returnMedian(vector<int>& a)
     return a[n/2];
 }
 
-void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode,bool isPoint,int split_element,vector<int>& qpoint,int leftId,int rightId,bool addlast,int split_dim)
+void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager& fm,int thisNode,bool isPoint,int split_element,vector<int>& qpoint,int leftId,int rightId,bool addlast,int split_dim)
 {
     PageHandler ph = fh.PageAt(thisNode);
     char *data = ph.GetData();
@@ -133,7 +133,9 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
         num = 2;
         memcpy(&Ldata[Loffset-4],&num,4);
         memcpy(&Rdata[Roffset-4],&num,4);
-
+        
+        //fm.PrintBuffer();
+        cout<<"NodeSplit: ";
         for(int idx=0;idx<pointMaxNodes;idx++)
         {
             memcpy(&num,&data[offset+4*split_dim],4);
@@ -151,9 +153,15 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
 
             int checker;
             memcpy(&checker,&data[offset-4],4);
+            cout<<checker<<" ";
             if(checker<=-1) break;
         }
+        cout<<endl;
+        cout<<Loffset<<"-:-"<<Roffset<<endl;
 
+        //fm.PrintBuffer();
+        //fh.MarkDirty(rightId);
+        
         num = -1;
         if(qpoint[split_dim]<split_element && addlast)
         {
@@ -233,7 +241,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
             PageHandler rightChild = fh.NewPage();
             cout<<"break9.2:\n";
 
-            NodeSplit(leftChild,rightChild,fh,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
+            NodeSplit(leftChild,rightChild,fh,fm,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
 
             memcpy(&Ldata[Loffset],&data[offset],4*(region.size()));
             memcpy(&Ldata[Loffset],&leftChildId,4);
@@ -271,11 +279,13 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
             int rightChildId = newnodeid + 1;
             newnodeid += 2;
 
-            memcpy(&nextToSplit,&region[0],4);       
+            memcpy(&nextToSplit,&region[0],4);
+            cerr<<"nextToSplit: "<<nextToSplit<<endl;       
 
             PageHandler leftChild = fh.NewPage();
             PageHandler rightChild = fh.NewPage();
-            NodeSplit(leftChild,rightChild,fh,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
+            //fm.PrintBuffer();
+            NodeSplit(leftChild,rightChild,fh,fm,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
 
             memcpy(&Ldata[Loffset],&region[0],4*(region.size()));
             memcpy(&Ldata[Loffset],&leftChildId,4);
@@ -363,8 +373,8 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     int rightId = newnodeid + 1;
     newnodeid += 2;
 
-    if(isPoint) NodeSplit(left,right,fh,thisNode,isPoint,split_element,qpoint,leftId,rightId,true,split_dim);
-    else NodeSplit(left,right,fh,thisNode,isPoint,split_element,region,leftId,rightId,true,split_dim);
+    if(isPoint) NodeSplit(left,right,fh,fm,thisNode,isPoint,split_element,qpoint,leftId,rightId,true,split_dim);
+    else NodeSplit(left,right,fh,fm,thisNode,isPoint,split_element,region,leftId,rightId,true,split_dim);
     
     vector<int> parentMin(qpoint.size());
     vector<int> parentMax(qpoint.size());
@@ -409,6 +419,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     bool poverflow = true;
     offset = 12;
 
+    cout<<"Current regions: ";
     for(int idx=0;idx<regionMaxNodes;idx++)
     {
         memcpy(&num,&pdata[offset],4);
@@ -431,7 +442,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
         }
         offset += 4*(2*qpoint.size()+1);
     }
-    cout<<endl;
+    cout<<rightId<<endl;
 
     if(!poverflow)
     {
