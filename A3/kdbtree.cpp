@@ -148,6 +148,10 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
                 Roffset += 4*(qpoint.size()+1);
             }
             offset += 4*(qpoint.size()+1);
+
+            int checker;
+            memcpy(&checker,&data[offset-4],4);
+            if(checker<=-1) break;
         }
 
         num = -1;
@@ -169,17 +173,18 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
         memcpy(&Ldata[Loffset-4],&num,4);       // to ensure last one is -1..
         memcpy(&Rdata[Roffset-4],&num,4);
 
-        cerr<<"break8:\n";
-        //fh.MarkDirty(leftId);                 //ALERT Dont know why comment should be here..
-        //fh.UnpinPage(leftId);
+        cerr<<"break8, leftId:"<<leftId<<", rightId: "<<rightId<<", nodeId: "<<thisNode<<endl;
+        fh.MarkDirty(leftId);                 //ALERT Dont know why comment should be here..
+        fh.UnpinPage(leftId);
 
-        //fh.MarkDirty(rightId);
-        //fh.UnpinPage(rightId);
+        fh.MarkDirty(rightId);
+        fh.UnpinPage(rightId);
 
-        //fh.FlushPage(leftId);
-        //fh.FlushPage(rightId);
+        fh.FlushPage(leftId);
+        fh.FlushPage(rightId);
         
-        //fh.UnpinPage(thisNode);
+        fh.UnpinPage(thisNode);
+        cerr<<"break8 completed\n";
         return;                                 // since everything has been completed..
     }
 
@@ -196,6 +201,10 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
 
     for(int idx=0;idx<regionMaxNodes;idx++)
     {
+        int checker;
+        memcpy(&checker,&data[offset],4);
+        if(checker<=-1) break;
+
         memcpy(&leftnum,&data[offset+4+4*split_dim],4);
         memcpy(&rightnum,&data[offset+4+4*dim+4*split_dim],4);
 
@@ -219,7 +228,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
             memcpy(&nextToSplit,&data[offset],4);       
 
             cout<<"break9.1:\n";
-            //fh.FlushPages();
+            fh.FlushPages();
             PageHandler leftChild = fh.NewPage();    //ALERT: seg fault here..
             PageHandler rightChild = fh.NewPage();
             cout<<"break9.2:\n";
@@ -232,10 +241,10 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
             memcpy(&Ldata[Loffset + 4*(1+dim+split_dim)],&split_element,4);
 
 
-            memcpy(&Rdata[Loffset],&data[offset],4*(region.size()));
-            memcpy(&Rdata[Loffset],&leftChildId,4);
-            memcpy(&Rdata[Loffset + 4*(1+split_dim)],&split_element,4);
-            //memcpy(&Rdata[Loffset + 4*(1+dim+split_dim)],&split_element,4); 
+            memcpy(&Rdata[Roffset],&data[offset],4*(region.size()));
+            memcpy(&Rdata[Roffset],&rightChildId,4);
+            memcpy(&Rdata[Roffset + 4*(1+split_dim)],&split_element,4);
+            //memcpy(&Rdata[Roffset + 4*(1+dim+split_dim)],&split_element,4); 
         }
         offset += 4*(region.size());
     }
@@ -243,6 +252,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
     {
         memcpy(&leftnum,&region[1+split_dim],4);
         memcpy(&rightnum,&region[1+dim+split_dim],4);
+        cout<<"Here in region addlast\n";
 
         if(split_element>=rightnum)
         {
@@ -273,10 +283,10 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,int thisNode
             memcpy(&Ldata[Loffset + 4*(1+dim+split_dim)],&split_element,4);
 
 
-            memcpy(&Rdata[Loffset],&region[0],4*(region.size()));
-            memcpy(&Rdata[Loffset],&leftChildId,4);
-            memcpy(&Rdata[Loffset + 4*(1+split_dim)],&split_element,4);
-            //memcpy(&Rdata[Loffset + 4*(1+dim+split_dim)],&split_element,4); 
+            memcpy(&Rdata[Roffset],&region[0],4*(region.size()));
+            memcpy(&Rdata[Roffset],&rightChildId,4);
+            memcpy(&Rdata[Roffset + 4*(1+split_dim)],&split_element,4);
+            //memcpy(&Rdata[Roffset + 4*(1+dim+split_dim)],&split_element,4); 
         }    
     }
     
@@ -527,7 +537,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
 
         fh.MarkDirty(pointNode);              // ALERT: something wrong with this dirty..in bigger test case
         fh.UnpinPage(pointNode);
-        //fh.FlushPage(pointNode);
+        fh.FlushPage(pointNode);
 
         parentVec.resize(0);
         splitVec.resize(0);
