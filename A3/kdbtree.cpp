@@ -31,7 +31,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         
         if(Ntype==2) break;                             //Ntype=1 for region and 2 for point node.
 
-        if(pprint)cerr<<"INSERT ,Curr_node: "<<curr_node<<", Ntype: "<<Ntype<<endl;
+        if(pprint)cerr<<"PQuery ,Curr_node: "<<curr_node<<", Ntype: "<<Ntype<<endl;
         parentVec.push_back(parent_node);
         memcpy(&split_dim, &data[4], 4);
         splitVec.push_back(split_dim);
@@ -61,6 +61,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         fh.UnpinPage(parent_node);              
         regionsTouched++;
     }
+    fh.MarkDirty(curr_node);
 
     if(!actualP) return curr_node;              // Is it real pQuery... if not return..
 
@@ -173,25 +174,27 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
         //cerr<<"Offset: "<<offset<<"\n";
 
         //fm.PrintBuffer();
-        
         num = -1;
+        int temp_num = 0;
+        int dumm_num = -2;
         if(qpoint[split_dim]<split_element && addlast)
         {
+            if(Loffset>12) memcpy(&Ldata[Loffset-4],&temp_num,4); 
             memcpy(&Ldata[Loffset],&qpoint[0],4*(dim));
-            Loffset += 4*(dim);
-            memcpy(&Ldata[Loffset],&num,4);
-            Loffset += 4;
+            Loffset += 4*(dim) + 4;
         }
         else if(addlast)
         {
+            if(Roffset>12) memcpy(&Rdata[Roffset-4],&temp_num,4);
             memcpy(&Rdata[Roffset],&qpoint[0],4*(dim));
-            Roffset += 4*(dim);
-            memcpy(&Rdata[Roffset],&num,4);
-            Roffset += 4;    
+            Roffset += 4*(dim)+4;
         }
         
-        memcpy(&Ldata[Loffset-4],&num,4);       // to ensure last one is -1..
-        memcpy(&Rdata[Roffset-4],&num,4);
+        if(Loffset>12)memcpy(&Ldata[Loffset-4],&num,4);       // to ensure last one is -1..
+        else memcpy(&Ldata[Loffset+4*dim],&dumm_num,4);
+
+        if(Roffset>12)memcpy(&Rdata[Roffset-4],&num,4);
+        else memcpy(&Rdata[Roffset+4*dim],&dumm_num,4);
 
         cerr<<"break8, leftId:"<<leftId<<", rightId: "<<rightId<<", nodeId: "<<thisNode<<endl;
 
@@ -544,6 +547,52 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     return;
 }
 
+void printInsertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
+{
+    string sprint = "INSERTION DONE:\n";
+    outfile.write(sprint.data(),sprint.size());
+
+    int tempPoint = pQuery(fh,fm,qpoint,outfile,false);
+    //cerr<<tempPoint<<endl;
+
+    PageHandler temp_ph = fh.PageAt(tempPoint);
+    char *temp_data = temp_ph.GetData ();
+
+    fh.MarkDirty(tempPoint);
+
+    int offset = 12;
+    int temp_num,idx;
+    idx = 0;
+    string temp_str;
+
+    vector<int> point_temp(dim);
+
+    while(idx<pointMaxNodes)
+    {
+        memcpy(&temp_num,&temp_data[offset+4*dim],4);
+        if(temp_num<=-2) break;
+
+        memcpy(&point_temp[0],&temp_data[offset],4*dim);
+
+        for(int jdx=0;jdx<dim;jdx++) 
+        {
+            temp_str = to_string(point_temp[jdx]) + " ";
+            outfile.write(temp_str.data(),temp_str.size());
+        }
+        temp_str = "\n";
+        outfile.write(temp_str.data(),temp_str.size());
+
+        offset += 4*(dim+1);
+        idx++;
+        if(temp_num<=-1) break;
+    }
+    temp_str = "\n";
+    outfile.write(temp_str.data(),temp_str.size());
+
+    fh.FlushPages();
+    return;
+}
+
 void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
 {
     //first check if root points to null..
@@ -580,6 +629,8 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
         newnodeid++;
 
         cerr<<"ROOT NODE CREATED"<<"\n";
+        printInsertQuery(fh,fm,qpoint,outfile);
+
         return;
     }
 
@@ -604,40 +655,36 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     }
 
     // no overflow..
-    if(num==-1)
+    if(num<=-1)
     {
-        offset += (qpoint.size() + 1)*4;
         //cerr<<"break3: "<<offset<<endl;
-        num = pointNode;                        // what is stored in location by default..
-        memcpy(&data[offset-4],&num,4);         // store pointer to next node..
+        if(num==-1)
+        {
+            offset += (qpoint.size() + 1)*4;
+            num = pointNode; 
+            memcpy(&data[offset-4],&num,4);
+        }
         
         memcpy(&data[offset],&qpoint[0],4*(qpoint.size()));
         num = -1;
         memcpy(&data[offset+4*(qpoint.size())],&num,4);          // again -1 inserted in the end.
-
-        fh.MarkDirty(pointNode);              
-        fh.UnpinPage(pointNode);
-        fh.FlushPages();
-
-        parentVec.resize(0);
-        splitVec.resize(0);
-        return ;
+    }
+    else
+    {
+        //cerr<<"Point node overflow..\n";
+        vector<int> tempVec;                        // just to maintain same arguments..
+        Reorganization(fh,fm,qpoint,pointNode,true,tempVec);
     }
 
-    //cerr<<"Point node overflow..\n";
-    vector<int> tempVec;                        // just to maintain same arguments..
-    Reorganization(fh,fm,qpoint,pointNode,true,tempVec);
-
-    fh.MarkDirty(pointNode);
+    fh.MarkDirty(pointNode);              
     fh.UnpinPage(pointNode);
+    fh.FlushPages();
 
     parentVec.resize(0);
     splitVec.resize(0);
 
-    string sprint = "INSERTION DONE ";
-    outfile.write(sprint.data(),sprint.size());
-    
-    fh.FlushPages();                    
+    // Now printing the points of the point Node..
+    printInsertQuery(fh,fm,qpoint,outfile);                   
 }
 
 void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
@@ -664,6 +711,7 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
 
         int offset,num,idx,Ntype;
         memcpy(&Ntype,&data[8],4);
+        
         offset = 12;
         idx = 0;
 
@@ -675,6 +723,7 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
         if(Ntype==2)
         {
             vector<int> thisPoint;
+            int checker;
             while(true)
             {
                 memcpy(&num,&data[offset+4*idx],4);
@@ -683,10 +732,12 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
 
                 if(idx==dim)            
                 {
+                    offset += 4*(idx+1);
+                    memcpy(&checker,&data[offset-4],4);
+                    if(checker<=-2) break;
+
                     pointsList.push_back(thisPoint);
                     thisPoint.resize(0);
-
-                    offset += 4*(idx+1);
                     idx = 0;
 
                     memcpy(&num,&data[offset-4],4);
