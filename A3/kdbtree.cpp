@@ -17,6 +17,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
     int curr_node = rootid;
     int parent_node = rootid;
     int regionsTouched = 0;
+    bool pprint = false;
 
     while(true)
     {
@@ -30,7 +31,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         
         if(Ntype==2) break;                             //Ntype=1 for region and 2 for point node.
 
-        //cerr<<"Curr_node: "<<curr_node<<", Ntype: "<<Ntype<<endl;
+        if(pprint)cerr<<"INSERT ,Curr_node: "<<curr_node<<", Ntype: "<<Ntype<<endl;
         parentVec.push_back(parent_node);
         memcpy(&split_dim, &data[4], 4);
         splitVec.push_back(split_dim);
@@ -38,11 +39,11 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         node_num = 0;
         offset = 12;
         
-        //cerr<<"Children: ";
+        if(pprint)cerr<<"Children: ";
         while(node_num<regionMaxNodes)
         {
             memcpy(&child,&data[offset],4);
-            //cerr<<child<<" ";
+            if(pprint)cerr<<child<<" ";
             if(child==-1) break;
 
             memcpy(&valMIN,&data[offset+4*(1+split_dim)],4);
@@ -55,7 +56,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
             offset += 4*(1+2*qpoint.size());
             node_num++;
         }
-        //cerr<<"\n";
+        if(pprint)cerr<<"\n";
         fh.UnpinPage(parent_node);              
         regionsTouched++;
     }
@@ -140,12 +141,10 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
         memcpy(&Rdata[Roffset-4],&num,4);
         
         //fm.PrintBuffer();
-        cout<<"NodeSplit: ";
-        cout<<"Offset: "<<offset<<"\n";
-        cout<<dim<<"\n";
+        cerr<<"NodeSplit: ";
         for(int idx=0;idx<pointMaxNodes;idx++)
         {
-            cout<<"("<<Loffset<<","<<Roffset<<") ";
+            cerr<<"("<<Loffset<<","<<Roffset<<") ";
             memcpy(&num,&data[offset+4*split_dim],4);
             if(num<split_element)
             {
@@ -163,12 +162,11 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
             memcpy(&checker,&data[offset-4],4);
             if(checker<=-1) break;
         }
-        cout<<endl;
-        cout<<Loffset<<"-:-"<<Roffset<<endl;
-        cout<<"Offset: "<<offset<<"\n";
+        cerr<<endl;
+        //cerr<<Loffset<<"-:-"<<Roffset<<endl;
+        //cerr<<"Offset: "<<offset<<"\n";
 
         //fm.PrintBuffer();
-        //fh.MarkDirty(rightId);
         
         num = -1;
         if(qpoint[split_dim]<split_element && addlast)
@@ -200,7 +198,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
         fh.FlushPage(rightId);
         
         fh.UnpinPage(thisNode);
-        cerr<<"break8 completed\n";
+        //cerr<<"break8 completed\n";
         return;                                 // since everything has been completed..
     }
 
@@ -213,7 +211,10 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
 
     int leftnum,rightnum,temp;
     int dim = region.size()/2;
-    cerr<<"break6: \n";
+    cerr<<"break6: Parent splitting\n";
+    cerr<<"leftId:"<<leftId<<",rightId:"<<rightId<<endl;
+    fh.MarkDirty(leftId);
+    fh.MarkDirty(rightId);
 
     for(int idx=0;idx<regionMaxNodes;idx++)
     {
@@ -242,12 +243,11 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
             newnodeid += 2;
 
             memcpy(&nextToSplit,&data[offset],4);       
+            
+            cerr<<"break9.1: Region node recursive splitting\n";
 
-            cout<<"break9.1:\n";
-            fh.FlushPages();
             PageHandler leftChild = fh.NewPage();    //ALERT: seg fault here..
             PageHandler rightChild = fh.NewPage();
-            cout<<"break9.2:\n";
 
             NodeSplit(leftChild,rightChild,fh,fm,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
 
@@ -256,11 +256,13 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
             //memcpy(&Ldata[Loffset + 4*(1+split_dim)],&split_element,4);
             memcpy(&Ldata[Loffset + 4*(1+dim+split_dim)],&split_element,4);
 
-
             memcpy(&Rdata[Roffset],&data[offset],4*(region.size()));
             memcpy(&Rdata[Roffset],&rightChildId,4);
             memcpy(&Rdata[Roffset + 4*(1+split_dim)],&split_element,4);
-            //memcpy(&Rdata[Roffset + 4*(1+dim+split_dim)],&split_element,4); 
+            //memcpy(&Rdata[Roffset + 4*(1+dim+split_dim)],&split_element,4);
+
+            Loffset += 4*(region.size());
+            Roffset += 4*(region.size()); 
         }
         offset += 4*(region.size());
     }
@@ -268,7 +270,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
     {
         memcpy(&leftnum,&region[1+split_dim],4);
         memcpy(&rightnum,&region[1+dim+split_dim],4);
-        cout<<"Here in region addlast\n";
+        cerr<<"Here in region addlast\n";
 
         if(split_element>=rightnum)
         {
@@ -288,7 +290,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
             newnodeid += 2;
 
             memcpy(&nextToSplit,&region[0],4);
-            cerr<<"nextToSplit: "<<nextToSplit<<endl;       
+            //cerr<<"nextToSplit: "<<nextToSplit<<endl;       
 
             PageHandler leftChild = fh.NewPage();
             PageHandler rightChild = fh.NewPage();
@@ -305,6 +307,9 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
             memcpy(&Rdata[Roffset],&rightChildId,4);
             memcpy(&Rdata[Roffset + 4*(1+split_dim)],&split_element,4);
             //memcpy(&Rdata[Roffset + 4*(1+dim+split_dim)],&split_element,4); 
+
+            Loffset += 4*(region.size());
+            Roffset += 4*(region.size());
         }    
     }
     
@@ -318,8 +323,9 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
     fh.MarkDirty(rightId);
     fh.UnpinPage(rightId);
 
-    //fh.FlushPage(leftId);
-    //fh.FlushPage(rightId);
+    fh.FlushPage(leftId);
+    fh.FlushPage(rightId);
+    //fh.UnpinPage(thisNode);
 }
 
 void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int thisNode,bool isPoint,vector<int>& region)
@@ -328,7 +334,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     char *data = ph.GetData ();
     bool createRoot = false;
 
-    //cerr<<"break4: \n";
+    cerr<<"Entered Reorganization on "<<thisNode<<"\n";
     int split_dim,offset,num,parentNode;
 
     if(parentVec.size()>0)
@@ -373,7 +379,6 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
 
     int split_element = returnMedian(vecMedian);
 
-    //cerr<<"break6: \n";
     PageHandler left = fh.NewPage();
     int leftId = newnodeid;
 
@@ -381,9 +386,26 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     int rightId = newnodeid + 1;
     newnodeid += 2;
 
+    cerr<<"In reorgan: leftID :"<<leftId<<", rightID: "<<rightId<<endl;
+
     if(isPoint) NodeSplit(left,right,fh,fm,thisNode,isPoint,split_element,qpoint,leftId,rightId,true,split_dim);
     else NodeSplit(left,right,fh,fm,thisNode,isPoint,split_element,region,leftId,rightId,true,split_dim);
+
+    /*/ Debugger.. Start
     
+    int debug,debugoff;
+    debugoff = 12;
+
+    char* debugdata = left.GetData();
+    memcpy(&debug,&debugdata[debugoff],4);
+    cerr<<"DebugLeft1: "<<debug<<endl;
+
+    debugdata = right.GetData();
+    memcpy(&debug,&debugdata[debugoff],4);
+    cerr<<"DebugRight1: "<<debug<<endl;
+
+    // Debugger.. End*/
+
     vector<int> parentMin(qpoint.size());
     vector<int> parentMax(qpoint.size());
 
@@ -396,6 +418,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
         parentNode = rootid;
         pph = fh.NewPage();
         pdata = pph.GetData ();
+
         cerr<<"Create new root: "<<rootid<<endl;
 
         int temp2 = rootid;
@@ -419,7 +442,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     }
     else
     {
-        cerr<<"ParentNode: "<<parentNode<<endl;
+        cerr<<"Reorgan ParentNode: "<<parentNode<<endl;
         pph = fh.PageAt(parentNode);
         pdata = pph.GetData ();
     }
@@ -427,15 +450,16 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     bool poverflow = true;
     offset = 12;
 
-    cout<<"Current regions: ";
+    cerr<<"Current regions: ";
     for(int idx=0;idx<regionMaxNodes;idx++)
     {
         memcpy(&num,&pdata[offset],4);
-        cout<<num<<" ";
+        cerr<<num<<" ";
         if(num==thisNode)
         {
             memcpy(&parentMin[0],&pdata[offset+4],4*(qpoint.size()));
             memcpy(&parentMax[0],&pdata[offset+4+4*(qpoint.size())],4*qpoint.size());
+            cerr<<"("<<leftId<<") ";
 
             memcpy(&pdata[offset],&leftId,4);
             memcpy(&pdata[offset+4*(1+qpoint.size()+split_dim)],&split_element,4);
@@ -444,13 +468,12 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
         }
         else if(num==-1)
         {
-            cout<<"Regions filled : "<<idx<<endl;
             poverflow = false;
             break;
         }
         offset += 4*(2*qpoint.size()+1);
     }
-    cout<<rightId<<endl;
+    cerr<<endl;
 
     if(!poverflow)
     {
@@ -476,10 +499,9 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
 
     Reorganization(fh,fm,qpoint,parentNode,false,newRegion);
 
-    cerr<<"break13: \n";
+    cerr<<"100% comp. reorgan: \n";
     fh.MarkDirty(parentNode);
     fh.UnpinPage(parentNode);
-    cerr<<"break14: \n";
     return;
     //fh.FlushPage(parentNode);
     
@@ -493,7 +515,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     parentVec.resize(0);
     splitVec.resize(0);
 
-    cerr<<"Entered Insert\n";
+    //cerr<<"Entered Insert\n";
 
     if(rootid==-1)
     {
@@ -522,7 +544,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
         rootid = newnodeid;
         newnodeid++;
 
-        cout<<"ROOT NODE CREATED"<<"\n";
+        cerr<<"ROOT NODE CREATED"<<"\n";
         return;
     }
 
@@ -582,7 +604,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
 void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
 {
     // note here qpoint contains 2*dim...
-    cout<<"Entered RQUERY\n";
+    cerr<<"Entered RQUERY\n";
     vector<vector<int>> pointsList;
     if(rootid==-1) return ;
     int regTouched = 0;
@@ -633,7 +655,7 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
             continue;                   // no need to move forward..
         }
 
-        //cout<<"Nodes: ";
+        //cerr<<"Nodes: ";
         while(idx<regionMaxNodes)
         {
             regTouched++;
@@ -655,9 +677,9 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
             offset += 4*(2*dim+1);        
             idx++;
 
-            //cout<<idx<<" ";
+            //cerr<<idx<<" ";
         }        
-        //cout<<endl;
+        //cerr<<endl;
     }
     cerr<<"Finished REQUERY\n";
     //print regTouched..
@@ -677,7 +699,7 @@ int main(int argc, char* argv[])
 
     FileManager fm;
     FileHandler fh = fm.CreateFile("temp1234.txt");
-    cout << "File created " << endl;
+    cerr << "File created " << endl;
 
     //4 for nodeid, 4 for split_dim, 4 for nodetype..
     regionMaxNodes = (PAGE_SIZE - 12)/((2*dim+1)*4);
@@ -707,15 +729,16 @@ int main(int argc, char* argv[])
         }
         qpoint.push_back(stoi(word));
 
-        cout<<"line: "<<linenum<<"\n";
+        cerr<<"line: "<<linenum<<"\n";
         //for(int jdx=0;jdx<qpoint.size();jdx++) cerr<<qpoint[jdx]<<" ";
 
-        if((qpoint.size()!=dim && type!="RQUERY") && (qpoint.size()!=2*dim && type=="RQUERY")){cout<<"ERROR IN INPUT FILE\n"; break;}
+        if((qpoint.size()!=dim && type!="RQUERY") && (qpoint.size()!=2*dim && type=="RQUERY")){cerr<<"ERROR IN INPUT FILE\n"; break;}
         else if(type=="INSERT") insertQuery(fh,fm,qpoint,outfile);
         else if(type=="PQUERY") pQuery(fh,fm,qpoint,outfile,true);
         else if(type=="RQUERY") rQuery(fh,fm,qpoint,outfile);
-        else {cout<<"ERROR IN INPUT FILE\n"; break;}
-
+        else {cerr<<"ERROR IN INPUT FILE\n"; break;}
+        
+        //if(linenum==53) break;
         linenum++;
     }
 }
