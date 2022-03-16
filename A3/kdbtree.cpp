@@ -10,6 +10,7 @@ int newnodeid;
 
 vector<int> parentVec;
 vector<int> splitVec;
+int dim;
 
 int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,bool actualP)
 {
@@ -29,6 +30,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         
         if(Ntype==2) break;                             //Ntype=1 for region and 2 for point node.
 
+        //cerr<<"Curr_node: "<<curr_node<<", Ntype: "<<Ntype<<endl;
         parentVec.push_back(parent_node);
         memcpy(&split_dim, &data[4], 4);
         splitVec.push_back(split_dim);
@@ -36,9 +38,11 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         node_num = 0;
         offset = 12;
         
+        //cerr<<"Children: ";
         while(node_num<regionMaxNodes)
         {
             memcpy(&child,&data[offset],4);
+            //cerr<<child<<" ";
             if(child==-1) break;
 
             memcpy(&valMIN,&data[offset+4*(1+split_dim)],4);
@@ -51,6 +55,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
             offset += 4*(1+2*qpoint.size());
             node_num++;
         }
+        //cerr<<"\n";
         fh.UnpinPage(parent_node);              
         regionsTouched++;
     }
@@ -136,28 +141,31 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
         
         //fm.PrintBuffer();
         cout<<"NodeSplit: ";
+        cout<<"Offset: "<<offset<<"\n";
+        cout<<dim<<"\n";
         for(int idx=0;idx<pointMaxNodes;idx++)
         {
+            cout<<"("<<Loffset<<","<<Roffset<<") ";
             memcpy(&num,&data[offset+4*split_dim],4);
             if(num<split_element)
             {
-                memcpy(&Ldata[Loffset],&data[offset],4*(qpoint.size()+1));
-                Loffset += 4*(qpoint.size()+1);
+                memcpy(&Ldata[Loffset],&data[offset],4*(dim+1));
+                Loffset += 4*(dim+1);
             }
             else
             {
-                memcpy(&Rdata[Roffset],&data[offset],4*(qpoint.size()+1));
-                Roffset += 4*(qpoint.size()+1);
+                memcpy(&Rdata[Roffset],&data[offset],4*(dim+1));
+                Roffset += 4*(dim+1);
             }
-            offset += 4*(qpoint.size()+1);
+            offset += 4*(dim+1);
 
             int checker;
             memcpy(&checker,&data[offset-4],4);
-            cout<<checker<<" ";
             if(checker<=-1) break;
         }
         cout<<endl;
         cout<<Loffset<<"-:-"<<Roffset<<endl;
+        cout<<"Offset: "<<offset<<"\n";
 
         //fm.PrintBuffer();
         //fh.MarkDirty(rightId);
@@ -165,15 +173,15 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
         num = -1;
         if(qpoint[split_dim]<split_element && addlast)
         {
-            memcpy(&Ldata[Loffset],&qpoint[0],4*(qpoint.size()));
-            Loffset += 4*(qpoint.size());
+            memcpy(&Ldata[Loffset],&qpoint[0],4*(dim));
+            Loffset += 4*(dim);
             memcpy(&Ldata[Loffset],&num,4);
             Loffset += 4;
         }
         else if(addlast)
         {
-            memcpy(&Rdata[Roffset],&qpoint[0],4*(qpoint.size()));
-            Roffset += 4*(qpoint.size());
+            memcpy(&Rdata[Roffset],&qpoint[0],4*(dim));
+            Roffset += 4*(dim);
             memcpy(&Rdata[Roffset],&num,4);
             Roffset += 4;    
         }
@@ -334,7 +342,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     else
     {
         memcpy(&split_dim,&data[4],4);
-        split_dim = (split_dim+1)%(qpoint.size()); // as we go up we increase split_dim..
+        split_dim = (split_dim-1)%(qpoint.size()); // as we go up we increase split_dim..
         createRoot = true;
     }
 
@@ -468,9 +476,11 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
 
     Reorganization(fh,fm,qpoint,parentNode,false,newRegion);
 
-    cerr<<"break8: \n";
+    cerr<<"break13: \n";
     fh.MarkDirty(parentNode);
     fh.UnpinPage(parentNode);
+    cerr<<"break14: \n";
+    return;
     //fh.FlushPage(parentNode);
     
     // now need to integrate left,right and delete pointNode..
@@ -482,6 +492,8 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     //first check if root points to null..
     parentVec.resize(0);
     splitVec.resize(0);
+
+    cerr<<"Entered Insert\n";
 
     if(rootid==-1)
     {
@@ -567,20 +579,22 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     outfile.write(sprint.data(),sprint.size());
 }
 
-vector<vector<int>> rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
+void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
 {
     // note here qpoint contains 2*dim...
+    cout<<"Entered RQUERY\n";
     vector<vector<int>> pointsList;
-    if(rootid==-1) return pointsList;
+    if(rootid==-1) return ;
     int regTouched = 0;
     //for pointTouched use the size of pointsList..
 
-    int dim = qpoint.size()/2;
+    dim = qpoint.size()/2;
     queue<int> toExplore;
     toExplore.push(rootid);
 
     while(toExplore.size()>0)
     {
+        //cerr<<"Rentered the queue\n";
         int curr_node = toExplore.front();
         toExplore.pop();
 
@@ -591,6 +605,8 @@ vector<vector<int>> rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,f
         memcpy(&Ntype,&data[8],4);
         offset = 12;
         idx = 0;
+
+        //cerr<<"RPQ: "<<curr_node<<", type = "<<Ntype<<endl;
 
         // the node is a point node..
         if(Ntype==2)
@@ -617,6 +633,7 @@ vector<vector<int>> rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,f
             continue;                   // no need to move forward..
         }
 
+        //cout<<"Nodes: ";
         while(idx<regionMaxNodes)
         {
             regTouched++;
@@ -637,18 +654,22 @@ vector<vector<int>> rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,f
 
             offset += 4*(2*dim+1);        
             idx++;
+
+            //cout<<idx<<" ";
         }        
+        //cout<<endl;
     }
+    cerr<<"Finished REQUERY\n";
     //print regTouched..
     //print points list..
-    return pointsList;
+    return;
 }
 
 int main(int argc, char* argv[])
 {
     assert(argc>3);
     string input_file = argv[1];
-    int dim = std::stoi(argv[2]);
+    dim = std::stoi(argv[2]);
     string output_file = argv[3];
 
     ifstream infile(input_file,ios::in);
@@ -686,7 +707,7 @@ int main(int argc, char* argv[])
         }
         qpoint.push_back(stoi(word));
 
-        //cout<<linenum<<"\n";
+        cout<<"line: "<<linenum<<"\n";
         //for(int jdx=0;jdx<qpoint.size();jdx++) cerr<<qpoint[jdx]<<" ";
 
         if((qpoint.size()!=dim && type!="RQUERY") && (qpoint.size()!=2*dim && type=="RQUERY")){cout<<"ERROR IN INPUT FILE\n"; break;}
