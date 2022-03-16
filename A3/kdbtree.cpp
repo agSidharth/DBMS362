@@ -31,6 +31,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         
         if(Ntype==2) break;                             //Ntype=1 for region and 2 for point node.
 
+        regionsTouched++;
         if(pprint)cerr<<"PQuery ,Curr_node: "<<curr_node<<", Ntype: "<<Ntype<<endl;
         parentVec.push_back(parent_node);
         memcpy(&split_dim, &data[4], 4);
@@ -59,7 +60,6 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         if(pprint)cerr<<"\n";
         fh.MarkDirty(parent_node);
         fh.UnpinPage(parent_node);              
-        regionsTouched++;
     }
     fh.MarkDirty(curr_node);
 
@@ -93,8 +93,8 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
     fh.UnpinPage(curr_node);
 
     string sprint;
-    if(test) sprint = "TRUE "+to_string(regionsTouched) +"\n";
-    else sprint = "FALSE\n";
+    if(test) sprint = to_string(regionsTouched) +"\nTRUE\n\n";
+    else sprint = "0\nFALSE\n\n";
     outfile.write(sprint.data(),sprint.size());
     
     fh.FlushPages();           
