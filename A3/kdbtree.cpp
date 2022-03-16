@@ -57,6 +57,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
             node_num++;
         }
         if(pprint)cerr<<"\n";
+        fh.MarkDirty(parent_node);
         fh.UnpinPage(parent_node);              
         regionsTouched++;
     }
@@ -66,6 +67,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
     parentVec.resize(0);
     splitVec.resize(0);
 
+    fh.MarkDirty(curr_node);
     fh.UnpinPage(curr_node);
     PageHandler ph = fh.PageAt(curr_node);
     char *data = ph.GetData ();
@@ -94,6 +96,7 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
     else sprint = "FALSE\n";
     outfile.write(sprint.data(),sprint.size());
     
+    fh.FlushPages();           
     return test;
 }
 
@@ -118,6 +121,9 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
     char *data = ph.GetData();
     char *Ldata = left.GetData();
     char *Rdata = right.GetData();
+
+    fh.MarkDirty(leftId);
+    fh.MarkDirty(rightId);
 
     int offset,num,this_split_dim,Loffset,Roffset,Ntype;
     memcpy(&this_split_dim,&data[4],4);
@@ -188,16 +194,18 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
         memcpy(&Rdata[Roffset-4],&num,4);
 
         cerr<<"break8, leftId:"<<leftId<<", rightId: "<<rightId<<", nodeId: "<<thisNode<<endl;
-        fh.MarkDirty(leftId);                 //ALERT Dont know why comment should be here..
-        fh.UnpinPage(leftId);
 
+        fh.MarkDirty(leftId);
         fh.MarkDirty(rightId);
+        fh.UnpinPage(leftId);
         fh.UnpinPage(rightId);
 
-        fh.FlushPage(leftId);
+        fh.FlushPage(leftId);               
         fh.FlushPage(rightId);
         
+        fh.MarkDirty(thisNode);
         fh.UnpinPage(thisNode);
+        fh.FlushPage(thisNode);
         //cerr<<"break8 completed\n";
         return;                                 // since everything has been completed..
     }
@@ -246,10 +254,18 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
             
             cerr<<"break9.1: Region node recursive splitting\n";
 
-            PageHandler leftChild = fh.NewPage();    //ALERT: seg fault here..
+            PageHandler leftChild = fh.NewPage();    
             PageHandler rightChild = fh.NewPage();
+            
+            fh.MarkDirty(leftChildId);
+            fh.MarkDirty(rightChildId);
 
             NodeSplit(leftChild,rightChild,fh,fm,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
+
+            fh.MarkDirty(leftChildId);
+            fh.MarkDirty(rightChildId);
+            fh.UnpinPage(leftChildId);
+            fh.UnpinPage(rightChildId);
 
             memcpy(&Ldata[Loffset],&data[offset],4*(region.size()));
             memcpy(&Ldata[Loffset],&leftChildId,4);
@@ -295,7 +311,15 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
             PageHandler leftChild = fh.NewPage();
             PageHandler rightChild = fh.NewPage();
             //fm.PrintBuffer();
+            fh.MarkDirty(leftChildId);
+            fh.MarkDirty(rightChildId);
+
             NodeSplit(leftChild,rightChild,fh,fm,nextToSplit,false,split_element,region,leftChildId,rightChildId,false,split_dim);
+
+            fh.MarkDirty(leftChildId);
+            fh.MarkDirty(rightChildId);
+            fh.UnpinPage(leftChildId);
+            fh.UnpinPage(rightChildId);
 
             memcpy(&Ldata[Loffset],&region[0],4*(region.size()));
             memcpy(&Ldata[Loffset],&leftChildId,4);
@@ -318,14 +342,17 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
     if(Roffset<PAGE_SIZE) memcpy(&Rdata[Roffset],&temp,4);
     
     fh.MarkDirty(leftId);
-    fh.UnpinPage(leftId);
-
     fh.MarkDirty(rightId);
+
+    fh.UnpinPage(leftId);
     fh.UnpinPage(rightId);
 
     fh.FlushPage(leftId);
     fh.FlushPage(rightId);
-    //fh.UnpinPage(thisNode);
+
+    fh.MarkDirty(thisNode);
+    fh.UnpinPage(thisNode);
+    fh.FlushPage(thisNode);
 }
 
 void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int thisNode,bool isPoint,vector<int>& region)
@@ -386,10 +413,19 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     int rightId = newnodeid + 1;
     newnodeid += 2;
 
+    fh.MarkDirty(leftId);
+    fh.MarkDirty(rightId);
+
     cerr<<"In reorgan: leftID :"<<leftId<<", rightID: "<<rightId<<endl;
 
     if(isPoint) NodeSplit(left,right,fh,fm,thisNode,isPoint,split_element,qpoint,leftId,rightId,true,split_dim);
     else NodeSplit(left,right,fh,fm,thisNode,isPoint,split_element,region,leftId,rightId,true,split_dim);
+
+    fh.MarkDirty(leftId);
+    fh.MarkDirty(rightId);
+
+    fh.UnpinPage(leftId);
+    fh.UnpinPage(rightId);
 
     /*/ Debugger.. Start
     
@@ -438,13 +474,14 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
         }
         temp2 = -1;
         memcpy(&pdata[12+4*(2*qpoint.size()+1)],&temp2,4);
-        fh.MarkDirty(rootid);
+        fh.MarkDirty(parentNode);
     }
     else
     {
         cerr<<"Reorgan ParentNode: "<<parentNode<<endl;
         pph = fh.PageAt(parentNode);
         pdata = pph.GetData ();
+        fh.MarkDirty(parentNode);
     }
     
     bool poverflow = true;
@@ -487,7 +524,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
 
         fh.MarkDirty(parentNode);
         fh.UnpinPage(parentNode);
-        //fh.FlushPage(parentNode);  Ask about flushing of pages..
+        fh.FlushPage(parentNode);            
         return ;
     }
 
@@ -502,11 +539,9 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     cerr<<"100% comp. reorgan: \n";
     fh.MarkDirty(parentNode);
     fh.UnpinPage(parentNode);
-    return;
-    //fh.FlushPage(parentNode);
-    
-    // now need to integrate left,right and delete pointNode..
+    fh.FlushPage(parentNode);
 
+    return;
 }
 
 void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
@@ -539,7 +574,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
 
         fh.MarkDirty(0);
         fh.UnpinPage(0);
-        //fh.FlushPage(0);
+        fh.FlushPage(0);
 
         rootid = newnodeid;
         newnodeid++;
@@ -580,9 +615,9 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
         num = -1;
         memcpy(&data[offset+4*(qpoint.size())],&num,4);          // again -1 inserted in the end.
 
-        fh.MarkDirty(pointNode);              // ALERT: something wrong with this dirty..in bigger test case
+        fh.MarkDirty(pointNode);              
         fh.UnpinPage(pointNode);
-        fh.FlushPage(pointNode);
+        fh.FlushPages();
 
         parentVec.resize(0);
         splitVec.resize(0);
@@ -592,6 +627,8 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     //cerr<<"Point node overflow..\n";
     vector<int> tempVec;                        // just to maintain same arguments..
     Reorganization(fh,fm,qpoint,pointNode,true,tempVec);
+
+    fh.MarkDirty(pointNode);
     fh.UnpinPage(pointNode);
 
     parentVec.resize(0);
@@ -599,6 +636,8 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
 
     string sprint = "INSERTION DONE ";
     outfile.write(sprint.data(),sprint.size());
+    
+    fh.FlushPages();                    
 }
 
 void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
@@ -630,7 +669,9 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
 
         //cerr<<"RPQ: "<<curr_node<<", type = "<<Ntype<<endl;
 
-        // the node is a point node..
+        fh.MarkDirty(curr_node);
+        fh.UnpinPage(curr_node);              
+        
         if(Ntype==2)
         {
             vector<int> thisPoint;
@@ -684,6 +725,8 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
     cerr<<"Finished REQUERY\n";
     //print regTouched..
     //print points list..
+
+    fh.FlushPages();
     return;
 }
 
