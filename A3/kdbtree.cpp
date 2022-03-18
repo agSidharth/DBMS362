@@ -687,11 +687,27 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     printInsertQuery(fh,fm,qpoint,outfile);                   
 }
 
+void printRquery(vector<int>& point,int regTouched,fstream& outfile)
+{
+    string temp_str = "POINT: ";
+    outfile.write(temp_str.data(),temp_str.size());
+
+    for(int idx=0;idx<point.size();idx++)
+    {
+        temp_str = to_string(point[idx]) + " ";
+        outfile.write(temp_str.data(),temp_str.size());
+    }
+
+    temp_str = "NUM REGION NODES TOUCHED: "+to_string(regTouched) + "\n";
+    outfile.write(temp_str.data(),temp_str.size());
+
+}
+
 void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
 {
     // note here qpoint contains 2*dim...
     cerr<<"Entered RQUERY\n";
-    vector<vector<int>> pointsList;
+    //vector<vector<int>> pointsList;
     if(rootid==-1) return ;
     int regTouched = 0;
     //for pointTouched use the size of pointsList..
@@ -715,67 +731,63 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
         offset = 12;
         idx = 0;
 
-        //cerr<<"RPQ: "<<curr_node<<", type = "<<Ntype<<endl;
+        cerr<<"RPQ: "<<curr_node<<", type = "<<Ntype<<endl;
 
         fh.MarkDirty(curr_node);
         fh.UnpinPage(curr_node);              
         
         if(Ntype==2)
         {
-            vector<int> thisPoint;
+            vector<int> thisPoint(dim,0);
             int checker;
-            while(true)
+            offset = 12;
+
+            for(int jdx=0;jdx<pointMaxNodes;jdx++)
             {
-                memcpy(&num,&data[offset+4*idx],4);
-                thisPoint.push_back(num);
+                memcpy(&checker,&data[offset+4*dim],4);
+                cerr<<checker<<" ";
+                if(checker<=-2) break;
+
+                memcpy(&thisPoint[0],&data[offset],4*dim);
+
+                printRquery(thisPoint,regTouched,outfile);
+                if(checker<=-1) break;
+                
+                offset += 4*(dim+1);
+            }
+        }
+        else
+        {
+            while(idx<regionMaxNodes)
+            {
+                regTouched++;
+                memcpy(&num,&data[offset],4);        //num has child id..
+                if(num==-1) break;
+                
+                int rmin,rmax;
+                bool test = true;
+
+                for(int jdx=0;jdx<dim;jdx++)
+                {
+                    memcpy(&rmin,&data[offset+4*(1+jdx)],4);
+                    memcpy(&rmax,&data[offset+4*(1+dim+jdx)],4);
+
+                    if(!(rmin<=qpoint[2*jdx] && rmax>qpoint[2*jdx+1])) {test = false;break;}
+                }
+                if(test) toExplore.push(num);
+
+                offset += 4*(2*dim+1);        
                 idx++;
 
-                if(idx==dim)            
-                {
-                    offset += 4*(idx+1);
-                    memcpy(&checker,&data[offset-4],4);
-                    if(checker<=-2) break;
-
-                    pointsList.push_back(thisPoint);
-                    thisPoint.resize(0);
-                    idx = 0;
-
-                    memcpy(&num,&data[offset-4],4);
-                    if(num==-1) break;             //the last one will be having -1 
-                }
+                //cerr<<idx<<" ";
             }
-            continue;                   // no need to move forward..
-        }
-
-        //cerr<<"Nodes: ";
-        while(idx<regionMaxNodes)
-        {
-            regTouched++;
-            memcpy(&num,&data[offset],4);        //num has child id..
-            if(num==-1) break;
-            
-            int rmin,rmax;
-            bool test = true;
-
-            for(int jdx=0;jdx<dim;jdx++)
-            {
-                memcpy(&rmin,&data[offset+4*(1+jdx)],4);
-                memcpy(&rmax,&data[offset+4*(1+dim+jdx)],4);
-
-                if(!(rmin<=qpoint[2*jdx] && rmax>qpoint[2*jdx+1])) {test = false;break;}
-            }
-            if(test) toExplore.push(num);
-
-            offset += 4*(2*dim+1);        
-            idx++;
-
-            //cerr<<idx<<" ";
         }        
         //cerr<<endl;
     }
     cerr<<"Finished REQUERY\n";
-    //print regTouched..
-    //print points list..
+
+    string temp_str = "\n\n";
+    outfile.write(temp_str.data(),temp_str.size());
 
     fh.FlushPages();
     return;
