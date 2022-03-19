@@ -593,6 +593,15 @@ void printInsertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstrea
     return;
 }
 
+bool compareVec(vector<int>& vec1,vector<int>& vec2)
+{
+    for(int idx=0;idx<vec1.size();idx++)
+    {
+        if(vec1[idx]!=vec2[idx]) return false;
+    }
+    return true;
+}
+
 void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile)
 {
     //first check if root points to null..
@@ -646,10 +655,29 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     offset = 12;
     
     //cerr<<"break2: "<<pointMaxNodes<<endl;
+    vector<int> checkPoint(dim);
+
     while(idx<pointMaxNodes-1)
     {
         memcpy(&num,&data[offset+qpoint.size()*4],4);
+        memcpy(&checkPoint[0],&data[offset],4*(dim));
         if(num<=-1) break;                                // last location has -1.
+        
+        if(compareVec(checkPoint,qpoint))                 // point is duplicate..
+        {
+            fh.MarkDirty(pointNode);              
+            fh.UnpinPage(pointNode);
+            fh.FlushPages();
+
+            parentVec.resize(0);
+            splitVec.resize(0); 
+
+            string temp_str = "DUPLICATE POINT\n\n";
+            outfile.write(temp_str.data(),temp_str.size());
+            
+            return ;
+        }
+
         offset += (qpoint.size() + 1)*4;
         idx++;
     }
@@ -807,7 +835,7 @@ int main(int argc, char* argv[])
     FileHandler fh = fm.CreateFile("temp1234.txt");
     cerr << "File created " << endl;
 
-    //4 for nodeid, 4 for split_dim, 4 for nodetype..
+    //4 for nodeid, 4 for split_dim, 4 for nodetype..4 parentype
     regionMaxNodes = (PAGE_SIZE - 12)/((2*dim+1)*4);
     pointMaxNodes = (PAGE_SIZE - 12)/((dim+1)*4);
     rootid = -1;
