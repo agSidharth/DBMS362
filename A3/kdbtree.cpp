@@ -93,8 +93,8 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
     fh.UnpinPage(curr_node);
 
     string sprint;
-    if(test) sprint = to_string(regionsTouched) +"\nTRUE\n\n";
-    else sprint = "0\nFALSE\n\n";
+    if(test) sprint = "NUM REGION NODES TOUCHED: "+to_string(regionsTouched) +"\nTRUE\n\n\n";
+    else sprint = "NUM REGION NODES TOUCHED: 0\nFALSE\n\n\n";
     outfile.write(sprint.data(),sprint.size());
     
     fh.FlushPages();           
@@ -364,7 +364,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     char *data = ph.GetData ();
     bool createRoot = false;
 
-    cerr<<"Entered Reorganization on "<<thisNode<<"\n";
+    //cerr<<"Entered Reorganization on "<<thisNode<<"\n";
     int split_dim,offset,num,parentNode;
 
     if(parentVec.size()>0)
@@ -586,7 +586,7 @@ void printInsertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstrea
         idx++;
         if(temp_num<=-1) break;
     }
-    temp_str = "\n";
+    temp_str = "\n\n";
     outfile.write(temp_str.data(),temp_str.size());
 
     fh.FlushPages();
@@ -618,7 +618,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
         int num = 0;                //root identifier
         memcpy(&data[0],&num,sizeof(int));
 
-        num = 0;                    //split dimension
+        num = dim-1;                    //split dimension
         memcpy(&data[4],&num,sizeof(int));
 
         num = 2;                    //this is pointNode.
@@ -674,7 +674,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
 
             string temp_str = "DUPLICATE POINT\n\n";
             outfile.write(temp_str.data(),temp_str.size());
-            
+
             return ;
         }
 
@@ -744,6 +744,8 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
     queue<int> toExplore;
     toExplore.push(rootid);
 
+    bool atleastOne = false;
+
     while(toExplore.size()>0)
     {
         //cerr<<"Rentered the queue\n";
@@ -775,6 +777,7 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
                 memcpy(&checker,&data[offset+4*dim],4);
                 cerr<<checker<<" ";
                 if(checker<=-2) break;
+                atleastOne = true;
 
                 memcpy(&thisPoint[0],&data[offset],4*dim);
 
@@ -786,9 +789,9 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
         }
         else
         {
+            regTouched++;
             while(idx<regionMaxNodes)
             {
-                regTouched++;
                 memcpy(&num,&data[offset],4);        //num has child id..
                 if(num==-1) break;
                 
@@ -800,7 +803,8 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
                     memcpy(&rmin,&data[offset+4*(1+jdx)],4);
                     memcpy(&rmax,&data[offset+4*(1+dim+jdx)],4);
 
-                    if(!(rmin<=qpoint[2*jdx] && rmax>qpoint[2*jdx+1])) {test = false;break;}
+                    if(!((rmin<=qpoint[2*jdx] && rmax>=qpoint[2*jdx]) || (rmin<=qpoint[2*jdx+1] && rmax>=qpoint[2*jdx+1]))) 
+                    {test = false;break;}
                 }
                 if(test) toExplore.push(num);
 
@@ -814,8 +818,16 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
     }
     cerr<<"Finished REQUERY\n";
 
-    string temp_str = "\n\n";
-    outfile.write(temp_str.data(),temp_str.size());
+    if(!atleastOne)
+    {
+        string temp_str = "NO POINT FOUND\n\n\n";
+        outfile.write(temp_str.data(),temp_str.size());
+    }
+    else
+    {
+        string temp_str = "\n\n";
+        outfile.write(temp_str.data(),temp_str.size());
+    }   
 
     fh.FlushPages();
     return;
@@ -836,8 +848,8 @@ int main(int argc, char* argv[])
     cerr << "File created " << endl;
 
     //4 for nodeid, 4 for split_dim, 4 for nodetype..4 parentype
-    regionMaxNodes = (PAGE_SIZE - 12)/((2*dim+1)*4);
-    pointMaxNodes = (PAGE_SIZE - 12)/((dim+1)*4);
+    regionMaxNodes = (PAGE_SIZE - 16)/((2*dim+1)*4);
+    pointMaxNodes = (PAGE_SIZE - 16)/((dim+1)*4);
     rootid = -1;
 
     cerr<<"RegionMaxNodes: "<<regionMaxNodes<<endl;
