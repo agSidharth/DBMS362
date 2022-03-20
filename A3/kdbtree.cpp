@@ -12,6 +12,24 @@ vector<int> parentVec;
 vector<int> splitVec;
 int dim;
 
+bool checkMinVec(vector<int>& qpoint,vector<int>& mini)
+{
+    for(int idx=0;idx<mini.size();idx++)
+    {
+        if(mini[idx]>qpoint[idx]) return false;
+    }
+    return true;
+}
+
+bool checkMaxVec(vector<int>& qpoint,vector<int>& maxi)
+{
+    for(int idx=0;idx<maxi.size();idx++)
+    {
+        if(maxi[idx]<=qpoint[idx]) return false;
+    }
+    return true;
+}
+
 int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,bool actualP)
 {
     int curr_node = rootid;
@@ -26,13 +44,17 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         PageHandler ph = fh.PageAt(curr_node);
         char *data = ph.GetData ();
 
-        int split_dim,child,offset,node_num,valMIN,valMAX,Ntype;
+        int split_dim,child,offset,node_num,Ntype;
+        vector<int> valMIN(dim);
+        vector<int> valMAX(dim);
+
         memcpy(&Ntype,&data[8],4);
         
         if(Ntype==2) break;                             //Ntype=1 for region and 2 for point node.
 
         regionsTouched++;
         if(pprint)cerr<<"PQuery ,Curr_node: "<<curr_node<<", Ntype: "<<Ntype<<endl;
+
         parentVec.push_back(parent_node);
         memcpy(&split_dim, &data[4], 4);
         splitVec.push_back(split_dim);
@@ -41,17 +63,19 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
         offset = 12;
         
         if(pprint)cerr<<"Children: ";
+
         while(node_num<regionMaxNodes)
         {
             memcpy(&child,&data[offset],4);
             if(pprint)cerr<<child<<" ";
             if(child==-1) break;
 
-            memcpy(&valMIN,&data[offset+4*(1+split_dim)],4);
-            memcpy(&valMAX,&data[offset+4*(1+qpoint.size()+split_dim)],4);
+            memcpy(&valMIN[0],&data[offset+4],4*dim);
+            memcpy(&valMAX[0],&data[offset+4*(1+dim)],4*dim);
+
             memcpy(&curr_node,&data[offset],4);         // curr_node cannot be lesser than this value..
 
-            if(qpoint[split_dim]<valMAX && qpoint[split_dim]>=valMIN) break;
+            if(checkMaxVec(qpoint,valMAX) && checkMinVec(qpoint,valMIN)) break;
             //escape the loop if the curr_node is correct...
 
             offset += 4*(1+2*qpoint.size());
@@ -104,14 +128,6 @@ int pQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile,
 int returnMedian(vector<int>& a)
 {
     int n = a.size();
-    if(n%2==0)
-    {
-        nth_element(a.begin(),a.begin()+n/2,a.end());
-        nth_element(a.begin(),a.begin()+(n-1)/2,a.end());
-
-        if((a[(n-1)/2]+a[n/2])%2==0) return (a[(n-1)/2]+a[n/2])/2;
-        return int((a[(n-1)/2]+a[n/2])/2) + 1;    
-    }
     nth_element(a.begin(),a.begin()+n/2,a.end());
     return a[n/2];
 }
@@ -129,6 +145,8 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
     int offset,num,this_split_dim,Loffset,Roffset,Ntype;
     memcpy(&this_split_dim,&data[4],4);
     memcpy(&Ntype,&data[8],4);
+
+    if(addlast) this_split_dim = (this_split_dim + 1)%dim;
 
     memcpy(&Ldata[0],&leftId,4);
     memcpy(&Ldata[4],&this_split_dim,4);
@@ -151,8 +169,12 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
         cerr<<"NodeSplit: ";
         for(int idx=0;idx<pointMaxNodes;idx++)
         {
-            cerr<<"("<<Loffset<<","<<Roffset<<") ";
+            cerr<<"("<<Loffset<<","<<Roffset<<")";
+
             memcpy(&num,&data[offset+4*split_dim],4);
+
+            cerr<<"{"<<num<<"} ";
+
             if(num<split_element)
             {
                 memcpy(&Ldata[Loffset],&data[offset],4*(dim+1));
@@ -185,6 +207,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
         }
         else if(addlast)
         {
+            //cerr<<"Inserted new in right\n";
             if(Roffset>12) memcpy(&Rdata[Roffset-4],&temp_num,4);
             memcpy(&Rdata[Roffset],&qpoint[0],4*(dim));
             Roffset += 4*(dim)+4;
@@ -222,8 +245,10 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
 
     int leftnum,rightnum,temp;
     int dim = region.size()/2;
+
     cerr<<"break6: Parent splitting\n";
     cerr<<"leftId:"<<leftId<<",rightId:"<<rightId<<endl;
+
     fh.MarkDirty(leftId);
     fh.MarkDirty(rightId);
 
@@ -238,11 +263,13 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
 
         if(split_element>=rightnum)
         {
+            cerr<<"left region split\n";
             memcpy(&Ldata[Loffset],&data[offset],4*(region.size()));
             Loffset += 4*(region.size());
         }
         else if(split_element<leftnum)
         {
+            cerr<<"right region split\n";
             memcpy(&Rdata[Roffset],&data[offset],4*(region.size()));
             Roffset += 4*(region.size());    
         }
@@ -293,11 +320,13 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
 
         if(split_element>=rightnum)
         {
+            cerr<<"left region split\n";
             memcpy(&Ldata[Loffset],&region[0],4*(region.size()));
             Loffset += 4*(region.size());
         }
         else if(split_element<leftnum)
         {
+            cerr<<"right region split\n";
             memcpy(&Rdata[Roffset],&region[0],4*(region.size()));
             Roffset += 4*(region.size());    
         }
@@ -370,7 +399,9 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     if(parentVec.size()>0)
     {
         //cerr<<"break4.1: "<<parentVec.size()<<endl;
-        split_dim = splitVec[splitVec.size()-1];
+        //split_dim = splitVec[splitVec.size()-1]; 
+        
+        memcpy(&split_dim,&data[4],4);
         parentNode = parentVec[parentVec.size()-1];
         splitVec.pop_back();
         parentVec.pop_back();
@@ -378,7 +409,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     else
     {
         memcpy(&split_dim,&data[4],4);
-        split_dim = (split_dim-1)%(qpoint.size()); // as we go up we increase split_dim..
+        //split_dim = (split_dim-1)%(qpoint.size()); // as we go up we increase split_dim..
         createRoot = true;
     }
 
@@ -409,6 +440,10 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
 
     int split_element = returnMedian(vecMedian);
 
+    cerr<<"Split vector: ";
+    for(int xdx=0;xdx<vecMedian.size();xdx++) cerr<<vecMedian[xdx]<<" ";
+    cerr<<"\n";
+
     PageHandler left = fh.NewPage();
     int leftId = newnodeid;
 
@@ -419,7 +454,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
     fh.MarkDirty(leftId);
     fh.MarkDirty(rightId);
 
-    cerr<<"In reorgan: leftID :"<<leftId<<", rightID: "<<rightId<<endl;
+    //cerr<<"In reorgan: leftID :"<<leftId<<", rightID: "<<rightId<<endl;
 
     if(isPoint) NodeSplit(left,right,fh,fm,thisNode,isPoint,split_element,qpoint,leftId,rightId,true,split_dim);
     else NodeSplit(left,right,fh,fm,thisNode,isPoint,split_element,region,leftId,rightId,true,split_dim);
@@ -455,6 +490,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
         rootid = newnodeid;
         newnodeid++;
         parentNode = rootid;
+
         pph = fh.NewPage();
         pdata = pph.GetData ();
 
@@ -462,7 +498,7 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
 
         int temp2 = rootid;
         memcpy(&pdata[0],&temp2,4);
-        temp2 = split_dim;
+        temp2 = 0;                      //split_dim always initiailized as 0.
         memcpy(&pdata[4],&temp2,4);
         temp2 = 1;
         memcpy(&pdata[8],&temp2,4);
@@ -524,7 +560,8 @@ void Reorganization(FileHandler& fh,FileManager& fm,vector<int>& qpoint,int this
 
         int temp = -1;
         if(offset+4*(1+2*qpoint.size())<PAGE_SIZE) memcpy(&pdata[offset+4*(1+2*qpoint.size())],&temp,4);
-
+        
+        cerr<<"Exiting child overflow\n";
         fh.MarkDirty(parentNode);
         fh.UnpinPage(parentNode);
         fh.FlushPage(parentNode);            
@@ -618,7 +655,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
         int num = 0;                //root identifier
         memcpy(&data[0],&num,sizeof(int));
 
-        num = dim-1;                    //split dimension
+        num = 0;                    //split dimension is always initially 0
         memcpy(&data[4],&num,sizeof(int));
 
         num = 2;                    //this is pointNode.
@@ -745,11 +782,14 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
     toExplore.push(rootid);
 
     bool atleastOne = false;
+    int thisSize = toExplore.size();
 
     while(toExplore.size()>0)
     {
         //cerr<<"Rentered the queue\n";
         int curr_node = toExplore.front();
+        if(thisSize>0) thisSize--;
+
         toExplore.pop();
 
         PageHandler ph = fh.PageAt(curr_node);
@@ -777,19 +817,27 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
                 memcpy(&checker,&data[offset+4*dim],4);
                 cerr<<checker<<" ";
                 if(checker<=-2) break;
-                atleastOne = true;
-
+                
                 memcpy(&thisPoint[0],&data[offset],4*dim);
 
-                printRquery(thisPoint,regTouched,outfile);
-                if(checker<=-1) break;
-                
+                bool pointInPoint = true;
+                for(int fdx=0;fdx<dim;fdx++)
+                {
+                    if(thisPoint[fdx]<qpoint[2*fdx] || thisPoint[fdx]>qpoint[2*fdx+1]) pointInPoint = false;
+                }
+
+                if(pointInPoint)
+                {
+                    atleastOne = true;
+                    printRquery(thisPoint,regTouched,outfile);
+                }
+
+                if(checker<=-1) break;                
                 offset += 4*(dim+1);
             }
         }
         else
         {
-            regTouched++;
             while(idx<regionMaxNodes)
             {
                 memcpy(&num,&data[offset],4);        //num has child id..
@@ -815,6 +863,7 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
             }
         }        
         //cerr<<endl;
+        if(thisSize==0) {regTouched++; thisSize = toExplore.size();}
     }
     cerr<<"Finished REQUERY\n";
 
