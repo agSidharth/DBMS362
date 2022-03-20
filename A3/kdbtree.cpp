@@ -4,7 +4,7 @@
 using namespace std;
 
 bool errPrint = false;
-bool buffPrint = false;
+bool buffPrint = true;
 
 int regionMaxNodes;
 int pointMaxNodes;
@@ -275,7 +275,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
             memcpy(&Ldata[Loffset],&data[offset],4*(region.size()));
             Loffset += 4*(region.size());
         }
-        else if(split_element<leftnum)
+        else if(split_element<=leftnum)
         {
             if(errPrint) cerr<<"right region split\n";
             memcpy(&Rdata[Roffset],&data[offset],4*(region.size()));
@@ -332,7 +332,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
             memcpy(&Ldata[Loffset],&region[0],4*(region.size()));
             Loffset += 4*(region.size());
         }
-        else if(split_element<leftnum)
+        else if(split_element<=leftnum)
         {
             if(errPrint) cerr<<"right region split\n";
             memcpy(&Rdata[Roffset],&region[0],4*(region.size()));
