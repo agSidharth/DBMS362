@@ -192,7 +192,6 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
             if(checker<=-1) break;
         }
         cerr<<endl;
-        //cerr<<Loffset<<"-:-"<<Roffset<<endl;
         //cerr<<"Offset: "<<offset<<"\n";
 
         //fm.PrintBuffer();
@@ -219,6 +218,7 @@ void NodeSplit(PageHandler& left,PageHandler& right,FileHandler& fh,FileManager&
         if(Roffset>12)memcpy(&Rdata[Roffset-4],&num,4);
         else memcpy(&Rdata[Roffset+4*dim],&dumm_num,4);
 
+        cerr<<Loffset<<"-:-"<<Roffset<<endl;
         cerr<<"break8, leftId:"<<leftId<<", rightId: "<<rightId<<", nodeId: "<<thisNode<<endl;
 
         fh.MarkDirty(leftId);
@@ -812,10 +812,12 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
             int checker;
             offset = 12;
 
-            for(int jdx=0;jdx<pointMaxNodes;jdx++)
+            int jdx;
+            int totalPoints = 0;
+            for(jdx=0;jdx<pointMaxNodes;jdx++)
             {
                 memcpy(&checker,&data[offset+4*dim],4);
-                cerr<<checker<<" ";
+                //cerr<<checker<<" ";
                 if(checker<=-2) break;
                 
                 memcpy(&thisPoint[0],&data[offset],4*dim);
@@ -832,28 +834,35 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
                     printRquery(thisPoint,regTouched,outfile);
                 }
 
+                totalPoints++;
                 if(checker<=-1) break;                
                 offset += 4*(dim+1);
             }
+            cerr<<"Total points: "<<totalPoints<<endl;
         }
         else
         {
+            cerr<<"Children: ";
             while(idx<regionMaxNodes)
             {
                 memcpy(&num,&data[offset],4);        //num has child id..
+                cerr<<num<<" ";
                 if(num==-1) break;
                 
                 int rmin,rmax;
                 bool test = true;
 
+                cerr<<"{";
                 for(int jdx=0;jdx<dim;jdx++)
                 {
                     memcpy(&rmin,&data[offset+4*(1+jdx)],4);
                     memcpy(&rmax,&data[offset+4*(1+dim+jdx)],4);
+                    cerr<<"("<<rmin<<","<<rmax<<"),";
 
-                    if(!((rmin<=qpoint[2*jdx] && rmax>=qpoint[2*jdx]) || (rmin<=qpoint[2*jdx+1] && rmax>=qpoint[2*jdx+1]))) 
+                    if(!((rmin>=qpoint[2*jdx] && rmin<=qpoint[2*jdx+1]) || (rmax>qpoint[2*jdx] && rmax<=qpoint[2*jdx+1]) || (rmin<=qpoint[2*jdx] && rmax>=qpoint[2*jdx+1]))) 
                     {test = false;break;}
                 }
+                cerr<<"} ";
                 if(test) toExplore.push(num);
 
                 offset += 4*(2*dim+1);        
@@ -861,6 +870,7 @@ void rQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& outfile
 
                 //cerr<<idx<<" ";
             }
+            cerr<<endl;
         }        
         //cerr<<endl;
         if(thisSize==0) {regTouched++; thisSize = toExplore.size();}
