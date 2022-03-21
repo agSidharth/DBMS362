@@ -719,8 +719,7 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
     while(idx<pointMaxNodes-1)
     {
         memcpy(&num,&data[offset+qpoint.size()*4],4);
-        memcpy(&checkPoint[0],&data[offset],4*(dim));
-        if(num<=-1) break;                                // last location has -1.
+        memcpy(&checkPoint[0],&data[offset],4*(dim));                                // last location has -1.
         
         if(compareVec(checkPoint,qpoint))                 // point is duplicate..
         {
@@ -733,12 +732,13 @@ void insertQuery(FileHandler& fh,FileManager& fm,vector<int>& qpoint,fstream& ou
             parentVec.resize(0);
             splitVec.resize(0); 
 
-            string temp_str = "DUPLICATE POINT\n\n";
+            string temp_str = "DUPLICATE POINT\n\n\n";
             outfile.write(temp_str.data(),temp_str.size());
 
             return ;
         }
 
+        if(num<=-1) break;
         offset += (qpoint.size() + 1)*4;
         idx++;
     }
